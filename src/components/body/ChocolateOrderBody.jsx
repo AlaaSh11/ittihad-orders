@@ -1,24 +1,30 @@
-// ⚠️ UNCONFIRMED: All field names and option values in this component are placeholder guesses.
-// No chocolate order data was found in the existing codebase. Verify with shop before use.
-
 import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
 import {
   CHOCOLATE_TYPES,
-  CHOCOLATE_WRAPPING_METHODS,
-  CHOCOLATE_FILLING_TYPES,
+  CHOCOLATE_NAMES,
+  CHOCOLATE_UNIT_MAP,
+  DEFAULT_CHOCOLATE_UNIT,
 } from '../../constants/chocolateOrderFields';
 
 /**
- * Body fields for Chocolate orders — Section 5.2 of the build spec.
- * ⚠️ UNCONFIRMED PLACEHOLDER — verify all fields/options with shop.
+ * Body fields for Chocolate orders — Tab 3.
+ *
+ * Changes vs original:
+ *   - نوع الشوكولا: added بلجيكي and وطني options (via updated constant)
+ *   - "نوع الحشو" → "اسم الشوكولا" (label rename; field id 'fillingType' preserved)
+ *   - "طريقة التغليف" field label → "لون الورق" (field id 'wrappingMethod' preserved)
+ *   - الكمية: conditional unit label derived from selected نوع الشوكولا
  */
 export default function ChocolateOrderBody({ data, onChange }) {
+  // Derive unit label from selected chocolate type
+  const quantityUnit = CHOCOLATE_UNIT_MAP[data.chocolateType] || DEFAULT_CHOCOLATE_UNIT;
+
   return (
     <div className="grid grid-cols-2 gap-2">
 
-      {/* نوع الشوكولا */}
+      {/* نوع الشوكولا — now includes بلجيكي and وطني */}
       <SelectField
         label="نوع الشوكولا"
         id="chocolateType"
@@ -29,37 +35,47 @@ export default function ChocolateOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
-      {/* طريقة التغليف */}
+      {/* لون الورق — was "طريقة التغليف"; label replaced, field id 'wrappingMethod' preserved */}
       <SelectField
-        label="طريقة التغليف"
+        label="لون الورق"
         id="wrappingMethod"
-        options={CHOCOLATE_WRAPPING_METHODS}
+        options={['أبيض', 'ذهبي', 'فضي', 'أحمر', 'أسود', 'وردي', 'أزرق']}
         value={data.wrappingMethod || ''}
         onChange={(v) => onChange('wrappingMethod', v)}
         withOther
         placeholder="اختر"
       />
 
-      {/* نوع الحشو */}
+      {/* اسم الشوكولا — was "نوع الحشو"; label renamed, field id 'fillingType' preserved */}
       <SelectField
-        label="نوع الحشو"
+        label="اسم الشوكولا"
         id="fillingType"
-        options={CHOCOLATE_FILLING_TYPES}
+        options={CHOCOLATE_NAMES}
         value={data.fillingType || ''}
         onChange={(v) => onChange('fillingType', v)}
         withOther
         placeholder="اختر"
       />
 
-      {/* الكمية */}
-      <TextField
-        label="الكمية"
-        id="quantity"
-        type="number"
-        dir="ltr"
-        value={data.quantity || ''}
-        onChange={(v) => onChange('quantity', v)}
-      />
+      {/* الكمية — unit label driven by نوع الشوكولا */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="chocolateQuantity" className="text-xs font-bold text-[#1a1a2e] text-center">
+          الكمية
+          {quantityUnit && (
+            <span className="mr-1 text-[10px] font-normal text-[#e2495c]">
+              ({quantityUnit})
+            </span>
+          )}
+        </label>
+        <input
+          id="chocolateQuantity"
+          type="number"
+          dir="ltr"
+          value={data.quantity || ''}
+          onChange={(e) => onChange('quantity', e.target.value)}
+          className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
+        />
+      </div>
 
       {/* المواصفات */}
       <TextareaField

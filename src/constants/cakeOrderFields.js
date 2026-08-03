@@ -55,7 +55,6 @@ export const CAKE_COLORS = [
   'ذهبي',
 ];
 
-
 // الكتابة على — Write-on surface options
 export const WRITE_ON_OPTIONS = [
   'الصورة',
@@ -74,11 +73,12 @@ export const INSCRIPTION_PRESETS = [
   'ألف مبروك',
 ];
 
-// حجم الصورة — Photo size options
+// حجم الصورة — Photo size options (includes "بلا صورة" for no-photo orders)
 export const PHOTO_SIZES = [
   'A5',
   'A4',
   'A3',
+  'بلا صورة',
 ];
 export const DEFAULT_PHOTO_SIZE = 'A4';
 
@@ -90,3 +90,37 @@ export const PHOTO_SOURCES = [
 ];
 export const DEFAULT_PHOTO_SOURCE = 'المجموعة';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Shape → Allowed Serve Counts mapping
+// Defines which عدد الأشخاص (serves) options are shown per الشكل (shape).
+// Update the arrays here when adding new shapes or resizing charts — no
+// component logic needs to change.
+// ─────────────────────────────────────────────────────────────────────────────
+export const SHAPE_SERVES_MAP = {
+  // Heart shapes are limited to smaller sizes that can hold the heart form cleanly
+  'قلب': [6, 10, 18, 22, 27, 34, 40],
+  // Round cakes support all sizes
+  'مدور': [6, 10, 18, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
+  // Rectangular cakes support all sizes (including the rectangular dimension entries)
+  'مستطيل': [15, 16, 19, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
+  // Custom / group shape — no restriction, show everything
+  'الشكل على المجموعة': [6, 10, 15, 16, 18, 19, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Add-ons / Accessories — chip selector items for the cake order form.
+// Each item has:
+//   id     {string}  Stable key stored in bodyData.addons[]
+//   label  {string}  Display label (Arabic)
+//   price  {number}  Unit price in shop currency (used for price hints / totals)
+//
+// To add a new add-on, append an entry here — no component changes needed.
+// ─────────────────────────────────────────────────────────────────────────────
+export const CAKE_ADDONS = [
+  { id: 'crown_gold',  label: 'تاج ذهبي',  price: 0 },
+  { id: 'crown_silver',label: 'تاج فضي',   price: 0 },
+  { id: 'sword_gold',  label: 'سيف ذهبي',  price: 0 },
+  { id: 'sword_silver',label: 'سيف فضي',   price: 0 },
+];
+// Note: prices above are set to 0 (TBD). Fill in real prices to enable
+// automatic price contribution from the AddonsSelector component.

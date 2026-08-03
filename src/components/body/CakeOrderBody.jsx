@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
-import TextareaField from '../ui/TextareaField';
+import AddonsSelector from '../ui/AddonsSelector';
 import {
   CAKE_SHAPES, DEFAULT_CAKE_SHAPE,
   CAKE_TYPES, DEFAULT_CAKE_TYPE,
@@ -12,35 +12,62 @@ import {
   INSCRIPTION_PRESETS,
   PHOTO_SIZES, DEFAULT_PHOTO_SIZE,
   PHOTO_SOURCES, DEFAULT_PHOTO_SOURCE,
+  SHAPE_SERVES_MAP,
+  CAKE_ADDONS,
 } from '../../constants/cakeOrderFields';
 import { CAKE_SIZE_CHART } from '../../constants/cakeSizeChart';
 
 /**
- * Body fields for Cake orders — Section 5.1 of the build spec.
+ * Body fields for Cake orders — Tab 1.
+ *
+ * Dependency chains:
+ *   الشكل → عدد الأشخاص  (shape filters which serve counts are available)
+ *   عدد الأشخاص → القياس  (serves auto-fills the size field from CAKE_SIZE_CHART)
  *
  * Props:
  *   data     {Object}  Controlled body state
  *   onChange {fn}      (field, value) => void
  */
 export default function CakeOrderBody({ data, onChange }) {
-  // Auto-fill cakeSize when serves changes
+  const shape = data.cakeShape || DEFAULT_CAKE_SHAPE;
+
+  // Derive the allowed serve options for the currently selected shape.
+  // Falls back to all sizes if the shape isn't in the map.
+  const allowedServes = SHAPE_SERVES_MAP[shape]
+    || CAKE_SIZE_CHART.map((e) => e.serves);
+
+  const serveOptions = [...CAKE_SIZE_CHART]
+    .filter((e) => allowedServes.includes(e.serves))
+    .sort((a, b) => a.serves - b.serves)
+    .map((e) => String(e.serves));
+
+  // When shape changes, reset serves + size if current serves is no longer valid
+  useEffect(() => {
+    const currentServes = Number(data.serves);
+    if (data.serves && !allowedServes.includes(currentServes)) {
+      onChange('serves', '');
+      onChange('cakeSize', '');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape]);
+
+  // Auto-fill cakeSize when serves changes (People → Size chain)
   useEffect(() => {
     const entry = CAKE_SIZE_CHART.find((e) => String(e.serves) === String(data.serves));
     if (entry) {
       onChange('cakeSize', entry.size);
     }
-    // Note: field stays editable after auto-fill
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data.serves]);
 
   return (
     <div className="grid grid-cols-2 gap-2">
-      {/* الشكل */}
+      {/* الشكل — triggers serve filter */}
       <SelectField
         label="الشكل"
         id="cakeShape"
         options={CAKE_SHAPES}
-        value={data.cakeShape || DEFAULT_CAKE_SHAPE}
+        value={shape}
         onChange={(v) => onChange('cakeShape', v)}
         withOther
       />
@@ -77,25 +104,25 @@ export default function CakeOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
-      {/* القياس — auto-filled from serves */}
+      {/* عدد الأشخاص — filtered by shape; triggers size auto-fill */}
+      <SelectField
+        label="عدد الأشخاص"
+        id="serves"
+        options={serveOptions}
+        value={data.serves ? String(data.serves) : ''}
+        onChange={(v) => onChange('serves', v)}
+        withOther
+        placeholder="اختر"
+      />
+
+      {/* القياس — auto-filled from عدد الأشخاص; still manually editable */}
       <TextField
         label="القياس"
         id="cakeSize"
         dir="ltr"
         value={data.cakeSize || ''}
         onChange={(v) => onChange('cakeSize', v)}
-        placeholder="القياس"
-      />
-
-      {/* عدد الأشخاص — triggers auto-fill */}
-      <SelectField
-        label="عدد الأشخاص"
-        id="serves"
-        options={[...CAKE_SIZE_CHART].sort((a, b) => a.serves - b.serves).map((e) => String(e.serves))}
-        value={data.serves ? String(data.serves) : ''}
-        onChange={(v) => onChange('serves', v)}
-        withOther
-        placeholder="اختر"
+        placeholder="يتعبأ تلقائياً"
       />
 
       {/* لون القالب */}
@@ -109,7 +136,6 @@ export default function CakeOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
-
       {/* الكتابة على */}
       <SelectField
         label="الكتابة على"
@@ -121,7 +147,7 @@ export default function CakeOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
-      {/* حجم الصورة */}
+      {/* حجم الصورة — includes "بلا صورة" option */}
       <SelectField
         label="حجم الصورة"
         id="photoSize"
@@ -163,13 +189,11 @@ export default function CakeOrderBody({ data, onChange }) {
         </datalist>
       </div>
 
-      {/* ملاحظات — full width */}
-      <TextareaField
-        label="ملاحظات"
-        id="notes"
-        value={data.notes || ''}
-        onChange={(v) => onChange('notes', v)}
-        rows={3}
+      {/* إضافات / اكسسوارات — chip multi-select (replaces ملاحظات textarea) */}
+      <AddonsSelector
+        options={CAKE_ADDONS}
+        selected={Array.isArray(data.addons) ? data.addons : []}
+        onChange={(ids) => onChange('addons', ids)}
       />
     </div>
   );

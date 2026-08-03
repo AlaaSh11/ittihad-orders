@@ -1,37 +1,63 @@
 import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
+import MultiSelectField from '../ui/MultiSelectField';
 import {
-  OCCASION_WRAPPING_PAPER_COLORS,
+  HOSPITALITY_TYPES,
   OCCASION_WRAPPING_COLORS,
   OCCASION_WRAPPING_METHODS,
   OCCASION_BASKET_COUNTS,
 } from '../../constants/occasionCatalog';
 
 /**
- * Body fields for Occasion orders — Section 5.3 of the build spec.
+ * Body fields for Occasion orders — Tab 2.
+ *
+ * Changes vs original:
+ *   - hospitalityType: free text → SelectField with typed HOSPITALITY_TYPES list
+ *   - الكمية: unit label switches automatically based on selected hospitalityType
+ *   - basketCount: single-select → MultiSelectField (value is now an array)
+ *   - لون ورق اللف: removed entirely
+ *   - "عدد النوابيس" label → "عدد الوايبس"
  */
 export default function OccasionOrderBody({ data, onChange }) {
+  // Derive the unit label for الكمية from the selected نوع الضيافة
+  const hospitalityEntry = HOSPITALITY_TYPES.find(
+    (t) => t.label === data.hospitalityType
+  );
+  const quantityUnit = hospitalityEntry?.unit || '';
+
   return (
     <div className="grid grid-cols-2 gap-2">
-      {/* نوع الضيافة */}
-      <TextField
+      {/* نوع الضيافة — now a dropdown with typed options */}
+      <SelectField
         label="نوع الضيافة"
         id="hospitalityType"
+        options={HOSPITALITY_TYPES.map((t) => t.label)}
         value={data.hospitalityType || ''}
         onChange={(v) => onChange('hospitalityType', v)}
-        placeholder="نوع الضيافة"
+        withOther
+        placeholder="اختر"
       />
 
-      {/* الكمية */}
-      <TextField
-        label="الكمية"
-        id="quantity"
-        type="number"
-        dir="ltr"
-        value={data.quantity || ''}
-        onChange={(v) => onChange('quantity', v)}
-      />
+      {/* الكمية — unit label derived from نوع الضيافة */}
+      <div className="flex flex-col gap-1">
+        <label htmlFor="quantity" className="text-xs font-bold text-[#1a1a2e] text-center">
+          الكمية
+          {quantityUnit && (
+            <span className="mr-1 text-[10px] font-normal text-[#e2495c]">
+              ({quantityUnit})
+            </span>
+          )}
+        </label>
+        <input
+          id="quantity"
+          type="number"
+          dir="ltr"
+          value={data.quantity || ''}
+          onChange={(e) => onChange('quantity', e.target.value)}
+          className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
+        />
+      </div>
 
       {/* طريقة اللف */}
       <SelectField
@@ -64,17 +90,6 @@ export default function OccasionOrderBody({ data, onChange }) {
         placeholder="لون الوردة"
       />
 
-      {/* عدد السلال */}
-      <SelectField
-        label="عدد السلال"
-        id="basketCount"
-        options={OCCASION_BASKET_COUNTS}
-        value={data.basketCount || ''}
-        onChange={(v) => onChange('basketCount', v)}
-        withOther
-        placeholder="اختر"
-      />
-
       {/* عدد المحارم */}
       <TextField
         label="عدد المحارم"
@@ -85,9 +100,9 @@ export default function OccasionOrderBody({ data, onChange }) {
         onChange={(v) => onChange('tissueCount', v)}
       />
 
-      {/* عدد النوابيس */}
+      {/* عدد الوايبس — relabeled from "عدد النوابيس" / "عدد اللوابيس"; field id unchanged */}
       <TextField
-        label="عدد النوابيس"
+        label="عدد الوايبس"
         id="napkinHolderCount"
         type="number"
         dir="ltr"
@@ -95,18 +110,17 @@ export default function OccasionOrderBody({ data, onChange }) {
         onChange={(v) => onChange('napkinHolderCount', v)}
       />
 
-      {/* لون ورق اللف */}
-      <div className="col-span-2">
-        <SelectField
-          label="لون ورق اللف"
-          id="wrappingPaperColor"
-          options={OCCASION_WRAPPING_PAPER_COLORS}
-          value={data.wrappingPaperColor || ''}
-          onChange={(v) => onChange('wrappingPaperColor', v)}
-          withOther
-          placeholder="اختر"
-        />
-      </div>
+      {/* عدد السلال — now multi-select (value stored as string[]) */}
+      <MultiSelectField
+        label="عدد السلال/حواني"
+        id="basketCount"
+        options={OCCASION_BASKET_COUNTS}
+        value={data.basketCount}
+        onChange={(v) => onChange('basketCount', v)}
+        rows={5}
+      />
+
+      {/* لون ورق اللف — REMOVED per spec */}
 
       {/* المواصفات */}
       <TextareaField
