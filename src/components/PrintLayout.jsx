@@ -1,3 +1,6 @@
+import { CAKE_ADDONS } from '../constants/cakeOrderFields';
+import { CHOCOLATE_PIECES_PER_KILO } from '../constants/chocolateLookup';
+
 /**
  * PrintLayout — A5 compact print output
  *
@@ -115,6 +118,14 @@ function PrintHeader({ id, header, createdAt }) {
 // ── Compact body: Cake ───────────────────────────────────────────────────────
 
 function PrintCakeBody({ body }) {
+  // Resolve addon IDs to their labels for print display
+  const selectedAddons = Array.isArray(body?.addons) && body.addons.length > 0
+    ? body.addons
+        .map((id) => CAKE_ADDONS.find((a) => a.id === id)?.label)
+        .filter(Boolean)
+        .join('، ')
+    : null;
+
   return (
     <div style={{ marginBottom: '1mm' }}>
       <Row2
@@ -141,10 +152,12 @@ function PrintCakeBody({ body }) {
       <div style={{ marginBottom: '1.5mm' }}>
         <PField label="الكتابة" value={body?.inscription} />
       </div>
-      {/* Notes — textarea */}
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="ملاحظات" value={body?.notes} isTextarea />
-      </div>
+      {/* Add-ons — replaces old ملاحظات textarea */}
+      {selectedAddons && (
+        <div style={{ marginBottom: '1.5mm' }}>
+          <PField label="إضافات / اكسسوارات" value={selectedAddons} />
+        </div>
+      )}
     </div>
   );
 }
@@ -156,10 +169,10 @@ function PrintChocolateBody({ body }) {
     <div style={{ marginBottom: '1mm' }}>
       <Row2
         left={<PField label="نوع الشوكولا" value={body?.chocolateType} />}
-        right={<PField label="طريقة التغليف" value={body?.wrappingMethod} />}
+        right={<PField label="لون الورق" value={body?.wrappingMethod} />}
       />
       <Row2
-        left={<PField label="نوع الحشو" value={body?.fillingType} />}
+        left={<PField label="اسم الشوكولا" value={body?.fillingType} />}
         right={<PField label="الكمية" value={body?.quantity} dir="ltr" />}
       />
       <div style={{ marginBottom: '1.5mm' }}>
@@ -175,6 +188,11 @@ function PrintChocolateBody({ body }) {
 // ── Compact body: Occasion (UNCONFIRMED) ─────────────────────────────────────
 
 function PrintOccasionBody({ body }) {
+  // basketCount is now stored as a string array from the multi-select
+  const basketDisplay = Array.isArray(body?.basketCount)
+    ? body.basketCount.join('، ')
+    : (body?.basketCount || '');
+
   return (
     <div style={{ marginBottom: '1mm' }}>
       <Row2
@@ -187,15 +205,13 @@ function PrintOccasionBody({ body }) {
       />
       <Row2
         left={<PField label="لون الوردة" value={body?.flowerColor} />}
-        right={<PField label="عدد السلال" value={body?.basketCount} />}
+        right={<PField label="عدد السلال/حواني" value={basketDisplay} />}
       />
       <Row2
         left={<PField label="عدد المحارم" value={body?.tissueCount} dir="ltr" />}
-        right={<PField label="عدد النوابيس" value={body?.napkinHolderCount} dir="ltr" />}
+        right={<PField label="عدد الوايبس" value={body?.napkinHolderCount} dir="ltr" />}
       />
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="لون ورق اللف" value={body?.wrappingPaperColor} />
-      </div>
+      {/* لون ورق اللف removed — field no longer in the form */}
       <div style={{ marginBottom: '1.5mm' }}>
         <PField label="المواصفات" value={body?.specifications} isTextarea />
       </div>
@@ -209,14 +225,23 @@ function PrintOccasionBody({ body }) {
 // ── Compact body: Simple (UNCONFIRMED) ──────────────────────────────────────
 
 function PrintSimpleBody({ body }) {
+  // Compute weight from pieces + lookup ratio (same logic as SimpleOrderBody)
+  const pieces = parseInt(body?.pieces, 10) || 0;
+  const ratio = CHOCOLATE_PIECES_PER_KILO[body?.chocolateName];
+  const weightDisplay = pieces > 0 && ratio
+    ? (pieces / ratio).toFixed(3) + ' كغ'
+    : '';
+
   return (
     <div style={{ marginBottom: '1mm' }}>
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="اسم الصنف" value={body?.itemName} />
-      </div>
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="الكمية" value={body?.quantity} dir="ltr" />
-      </div>
+      <Row2
+        left={<PField label="اسم الصنف" value={body?.itemName} />}
+        right={<PField label="اسم الشوكولا" value={body?.chocolateName} />}
+      />
+      <Row2
+        left={<PField label="عدد الحبات" value={body?.pieces} dir="ltr" />}
+        right={<PField label="الوزن بالكيلو" value={weightDisplay} dir="ltr" />}
+      />
       <div style={{ marginBottom: '1.5mm' }}>
         <PField label="ملاحظات" value={body?.notes} isTextarea />
       </div>

@@ -6,6 +6,9 @@
 // independently of the UI.
 // ============================================================
 
+import { CAKE_ADDONS } from '../constants/cakeOrderFields';
+import { CHOCOLATE_PIECES_PER_KILO } from '../constants/chocolateLookup';
+
 /**
  * Format a date string (YYYY-MM-DD) to a readable Arabic format.
  * @param {string} dateStr
@@ -42,30 +45,53 @@ function buildBodySummary(orderType, body) {
     if (body.inscription) lines.push(`الكتابة: ${body.inscription}`);
     if (body.photoSize)   lines.push(`حجم الصورة: ${body.photoSize}`);
     if (body.photoSource) lines.push(`مصدر الصورة: ${body.photoSource}`);
-    if (body.notes)       lines.push(`ملاحظات: ${body.notes}`);
+    // Add-ons: resolve IDs to labels (replaced the old body.notes field)
+    if (Array.isArray(body.addons) && body.addons.length > 0) {
+      const addonLabels = body.addons
+        .map((id) => CAKE_ADDONS.find((a) => a.id === id)?.label)
+        .filter(Boolean)
+        .join('، ');
+      if (addonLabels) lines.push(`إضافات / اكسسوارات: ${addonLabels}`);
+    }
+
   } else if (orderType === 'chocolate') {
-    if (body.chocolateType)    lines.push(`نوع الشوكولا: ${body.chocolateType}`);
-    if (body.wrappingMethod)   lines.push(`طريقة التغليف: ${body.wrappingMethod}`);
-    if (body.fillingType)      lines.push(`نوع الحشو: ${body.fillingType}`);
-    if (body.quantity)         lines.push(`الكمية: ${body.quantity}`);
-    if (body.specifications)   lines.push(`المواصفات: ${body.specifications}`);
-    if (body.notes)            lines.push(`ملاحظات: ${body.notes}`);
+    if (body.chocolateType) lines.push(`نوع الشوكولا: ${body.chocolateType}`);
+    if (body.wrappingMethod) lines.push(`لون الورق: ${body.wrappingMethod}`);   // was "طريقة التغليف"
+    if (body.fillingType)   lines.push(`اسم الشوكولا: ${body.fillingType}`);   // was "نوع الحشو"
+    if (body.quantity)      lines.push(`الكمية: ${body.quantity}`);
+    if (body.specifications) lines.push(`المواصفات: ${body.specifications}`);
+    if (body.notes)         lines.push(`ملاحظات: ${body.notes}`);
+
   } else if (orderType === 'occasion') {
-    if (body.hospitalityType)    lines.push(`نوع الضيافة: ${body.hospitalityType}`);
-    if (body.quantity)           lines.push(`الكمية: ${body.quantity}`);
-    if (body.wrappingMethod)     lines.push(`طريقة اللف: ${body.wrappingMethod}`);
-    if (body.wrappingColor)      lines.push(`لون التغليف: ${body.wrappingColor}`);
-    if (body.flowerColor)        lines.push(`لون الوردة: ${body.flowerColor}`);
-    if (body.basketCount)        lines.push(`عدد السلال: ${body.basketCount}`);
-    if (body.tissueCount)        lines.push(`عدد المحارم: ${body.tissueCount}`);
-    if (body.napkinHolderCount)  lines.push(`عدد النوابيس: ${body.napkinHolderCount}`);
-    if (body.wrappingPaperColor) lines.push(`لون ورق اللف: ${body.wrappingPaperColor}`);
-    if (body.specifications)     lines.push(`المواصفات: ${body.specifications}`);
-    if (body.notes)              lines.push(`ملاحظات: ${body.notes}`);
+    if (body.hospitalityType) lines.push(`نوع الضيافة: ${body.hospitalityType}`);
+    if (body.quantity)        lines.push(`الكمية: ${body.quantity}`);
+    if (body.wrappingMethod)  lines.push(`طريقة اللف: ${body.wrappingMethod}`);
+    if (body.wrappingColor)   lines.push(`لون التغليف: ${body.wrappingColor}`);
+    if (body.flowerColor)     lines.push(`لون الوردة: ${body.flowerColor}`);
+    // basketCount is now a string[] from the multi-select
+    if (body.basketCount) {
+      const baskets = Array.isArray(body.basketCount)
+        ? body.basketCount.join('، ')
+        : body.basketCount;
+      lines.push(`عدد السلال/حواني: ${baskets}`);
+    }
+    if (body.tissueCount)       lines.push(`عدد المحارم: ${body.tissueCount}`);
+    if (body.napkinHolderCount) lines.push(`عدد الوايبس: ${body.napkinHolderCount}`); // was "عدد النوابيس"
+    // wrappingPaperColor removed from form — no longer included
+    if (body.specifications)    lines.push(`المواصفات: ${body.specifications}`);
+    if (body.notes)             lines.push(`ملاحظات: ${body.notes}`);
+
   } else if (orderType === 'simple') {
-    if (body.itemName)  lines.push(`اسم الصنف: ${body.itemName}`);
-    if (body.quantity)  lines.push(`الكمية: ${body.quantity}`);
-    if (body.notes)     lines.push(`ملاحظات: ${body.notes}`);
+    if (body.itemName)      lines.push(`اسم الصنف: ${body.itemName}`);
+    if (body.chocolateName) lines.push(`اسم الشوكولا: ${body.chocolateName}`);
+    if (body.pieces)        lines.push(`عدد الحبات: ${body.pieces}`); // was body.quantity
+    // Include computed weight if we can derive it
+    const pieces = parseInt(body.pieces, 10) || 0;
+    const ratio = CHOCOLATE_PIECES_PER_KILO[body.chocolateName];
+    if (pieces > 0 && ratio) {
+      lines.push(`الوزن بالكيلو: ${(pieces / ratio).toFixed(3)} كغ`);
+    }
+    if (body.notes) lines.push(`ملاحظات: ${body.notes}`);
   }
 
   return lines.join('\n');

@@ -54,13 +54,13 @@ function bodySummary(orderType, body) {
     return [body.cakeShape, body.cakeType, body.cakeFlavor, body.cakeSize, body.serves ? `${body.serves} شخص` : null].filter(Boolean).join(' · ');
   }
   if (orderType === 'chocolate') {
-    return [body.chocolateType, body.wrappingMethod, body.quantity].filter(Boolean).join(' · ');
+    return [body.chocolateType, body.fillingType, body.quantity].filter(Boolean).join(' · ');
   }
   if (orderType === 'occasion') {
     return [body.hospitalityType, body.wrappingMethod, body.quantity].filter(Boolean).join(' · ');
   }
   if (orderType === 'simple') {
-    return [body.itemName, body.quantity].filter(Boolean).join(' · ');
+    return [body.itemName, body.chocolateName, body.pieces ? `${body.pieces} حبة` : null].filter(Boolean).join(' · ');
   }
   return '';
 }
