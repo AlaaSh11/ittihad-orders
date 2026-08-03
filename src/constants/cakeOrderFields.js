@@ -11,7 +11,7 @@ export const DEFAULT_CAKE_SHAPE = 'قلب';
 
 // نوع القالب — Cake type options
 export const CAKE_TYPES = [
-  'جلواز',
+  'جنواز',
   'تشيز كيك',
   'لايت كيك',
   'موس شوكولا',
@@ -29,7 +29,7 @@ export const CAKE_TYPES = [
   'Bûche de Noël 30 cm',
   'Bûche de Noël 40 cm',
 ];
-export const DEFAULT_CAKE_TYPE = 'جلواز';
+export const DEFAULT_CAKE_TYPE = 'جنواز';
 
 // النكهة — Flavor options
 export const CAKE_FLAVORS = [
