@@ -49,7 +49,7 @@ function makeEmptyFooter() {
  *   editingOrder {Object|null}  If set, pre-fill form for editing this order
  *   onCancelEdit {fn}           Cancel edit mode and return to blank form
  */
-export default function OrderFormView({ currentUser, onLogout, onHistory, editingOrder, onCancelEdit }) {
+export default function OrderFormView({ currentUser, onLogout, onHistory, onFactory, editingOrder, onCancelEdit }) {
   // ── Determine if we're in edit mode ──
   const isEditMode = !!editingOrder;
 
@@ -274,6 +274,16 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, editin
               className="bg-white text-[#1a1a2e] text-sm font-bold px-3 py-1 rounded border border-[#1a1a2e] font-cairo hover:bg-[#1a1a2e] hover:text-white transition-colors"
             >
               📋 سجل الطلبات
+            </button>
+          )}
+          {/* Factory / KDS switch button for admin and staff */}
+          {onFactory && (
+            <button
+              onClick={onFactory}
+              className="bg-amber-600 text-white text-sm font-extrabold px-3 py-1 rounded border border-amber-700 font-cairo hover:bg-amber-700 transition-colors flex items-center gap-1 shadow-sm"
+            >
+              <span>👨‍🍳</span>
+              <span className="hidden sm:inline">شاشة المصنع (KDS)</span>
             </button>
           )}
           {/* Logout button */}

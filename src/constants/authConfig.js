@@ -14,6 +14,7 @@ export const USER_METADATA = {
   cashier:  { username: 'cashier',  arabicName: 'الصندوق (الكاشير)',   role: 'cashier' },
   cashier1: { username: 'cashier1', arabicName: 'كاشير 1 (الصندوق)',    role: 'cashier' },
   cashier2: { username: 'cashier2', arabicName: 'كاشير 2 (الصندوق)',    role: 'cashier' },
+  factory:  { username: 'factory',  arabicName: 'شاشة المصنع (المطبخ)', role: 'factory' },
   admin:    { username: 'admin',    arabicName: 'ADMIN',               role: 'admin'   },
 };
 
@@ -28,4 +29,5 @@ export const ROLES = {
   ADMIN:   'admin',
   STAFF:   'staff',
   CASHIER: 'cashier',
+  FACTORY: 'factory',
 };

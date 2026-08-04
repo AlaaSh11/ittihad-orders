@@ -483,7 +483,7 @@ function EmptyState({ hasSearch, paymentFilter, showCancelledOnly }) {
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder }) {
+export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder, onFactory }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
@@ -758,6 +758,15 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
               className="bg-[#1a1a2e] text-white text-sm font-bold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-[#2d2d4a] transition-colors shadow-sm"
             >
               + طلب جديد
+            </button>
+          )}
+          {onFactory && !isCashier && (
+            <button
+              onClick={onFactory}
+              className="bg-amber-600 text-white text-sm font-extrabold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-amber-700 transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <span>👨‍🍳</span>
+              <span>شاشة المصنع (KDS)</span>
             </button>
           )}
           <button

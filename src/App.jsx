@@ -3,13 +3,14 @@ import { getCurrentUser, isWithinWorkingHours, logout } from './lib/auth';
 import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
 import OrderHistoryView from './views/OrderHistoryView';
+import FactoryView from './views/FactoryView';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [currentView, setCurrentView] = useState(() => {
     const u = getCurrentUser();
-    return u?.role === 'cashier' ? 'history' : 'form';
-  }); // 'form' | 'history'
+    return u?.role === 'cashier' ? 'history' : u?.role === 'factory' ? 'factory' : 'form';
+  }); // 'form' | 'history' | 'factory'
   const [editingOrder, setEditingOrder] = useState(null); // null = new order mode
 
   // Real-time Working Hours Enforcement (Checks clock every 30 seconds)
@@ -32,7 +33,8 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
-    setCurrentView(user?.role === 'cashier' ? 'history' : 'form');
+    const initialView = user?.role === 'cashier' ? 'history' : user?.role === 'factory' ? 'factory' : 'form';
+    setCurrentView(initialView);
   };
 
   const handleLogout = () => {
@@ -47,14 +49,19 @@ export default function App() {
     setEditingOrder(null);
   };
 
+  const goToFactory = () => {
+    setCurrentView('factory');
+    setEditingOrder(null);
+  };
+
   const goToNewOrder = () => {
-    if (currentUser?.role === 'cashier') return; // cashiers cannot access order creation form
+    if (currentUser?.role === 'cashier' || currentUser?.role === 'factory') return; 
     setCurrentView('form');
     setEditingOrder(null);
   };
 
   const goToEditOrder = (order) => {
-    if (currentUser?.role === 'cashier') return; // cashiers cannot access order creation form
+    if (currentUser?.role === 'cashier' || currentUser?.role === 'factory') return; 
     setEditingOrder(order);
     setCurrentView('form');
   };
@@ -63,16 +70,29 @@ export default function App() {
     return <LoginView onLogin={handleLogin} />;
   }
 
-  // Cashiers are restricted exclusively to the Order History & Payment management dashboard
   const isCashier = currentUser.role === 'cashier';
+  const isFactory = currentUser.role === 'factory';
 
+  // Factory role is directed exclusively to the Kitchen Display System (KDS)
+  if (isFactory || currentView === 'factory') {
+    return (
+      <FactoryView
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onSwitchToHistory={!isFactory ? goToHistory : null}
+      />
+    );
+  }
+
+  // Cashiers are restricted exclusively to the Order History & Payment management dashboard
   if (isCashier || currentView === 'history') {
     return (
       <OrderHistoryView
         currentUser={currentUser}
         onLogout={handleLogout}
-        onNewOrder={!isCashier ? goToNewOrder : null}
-        onEditOrder={!isCashier ? goToEditOrder : null}
+        onNewOrder={!isCashier && !isFactory ? goToNewOrder : null}
+        onEditOrder={!isCashier && !isFactory ? goToEditOrder : null}
+        onFactory={!isCashier ? goToFactory : null}
       />
     );
   }
@@ -82,6 +102,7 @@ export default function App() {
       currentUser={currentUser}
       onLogout={handleLogout}
       onHistory={goToHistory}
+      onFactory={goToFactory}
       editingOrder={editingOrder}
       onCancelEdit={goToNewOrder}
     />
