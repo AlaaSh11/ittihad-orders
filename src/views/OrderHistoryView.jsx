@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrders, updateOrder, collectDeposit, undoDeposit } from '../lib/ordersStore';
+import { listOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder } from '../lib/ordersStore';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 
-// ── Arabic labels for order types ────────────────────────────────────────────
+// ── Arabic labels and color mappings ────────────────────────────────────────────
 const ORDER_TYPE_LABELS = {
   cake:      'طلب كيك',
   chocolate: 'طلب شوكولا',
@@ -26,11 +26,39 @@ const FILTER_TABS = [
 ];
 
 const PAYMENT_TABS = [
-  { key: 'unpaid',          label: '⏳ كل غير المدفوعة (بانتظار التحصيل)' },
+  { key: 'unpaid',          label: '⏳ غير المدفوعة (بانتظار التحصيل)' },
   { key: 'deposit_pending', label: '⏳ بانتظار استلام العربون' },
   { key: 'paid',            label: '✅ تم السداد بالكامل' },
-  { key: 'all',             label: '🌐 كل الطلبات' },
+  { key: 'all',             label: '🌐 كل حالات الدفع' },
 ];
+
+const PRODUCTION_TABS = [
+  { key: 'all',         label: '🌐 كل مراحل المصنع' },
+  { key: 'received',    label: '📥 مستلمة (بانتظار التحضير)' },
+  { key: 'in_progress', label: '👨‍🍳 قيد التنفيذ بالمصنع' },
+  { key: 'ready',       label: '✅ جاهزة للتسليم' },
+  { key: 'delivered',   label: '🚚 تم التسليم' },
+];
+
+const DATE_TABS = [
+  { key: 'all',      label: '🗓️ كل التواريخ' },
+  { key: 'today',    label: '⏰ موعد التسليم اليوم' },
+  { key: 'tomorrow', label: '🌅 موعد التسليم غداً' },
+];
+
+const PRODUCTION_STATUS_LABELS = {
+  received:    '📥 مستلمة بالمحل',
+  in_progress: '👨‍🍳 قيد التنفيذ بالمصنع',
+  ready:       '✅ جاهزة للتسليم',
+  delivered:   '🚚 تم التسليم للزبون',
+};
+
+const PRODUCTION_STATUS_COLORS = {
+  received:    'bg-blue-100 text-blue-800 border-blue-300',
+  in_progress: 'bg-amber-100 text-amber-800 border-amber-400 animate-pulse',
+  ready:       'bg-emerald-100 text-emerald-800 border-emerald-400 font-extrabold',
+  delivered:   'bg-purple-100 text-purple-800 border-purple-300',
+};
 
 /**
  * Format ISO date to DD/MM/YYYY.
@@ -67,9 +95,23 @@ function bodySummary(orderType, body) {
 
 // ── Order Card ───────────────────────────────────────────────────────────────
 
-function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollectDeposit, onUndoDeposit, isUpdating, currentUser }) {
+function OrderCard({
+  order,
+  onEdit,
+  onWhatsApp,
+  onMarkPaid,
+  onUndoPaid,
+  onCollectDeposit,
+  onUndoDeposit,
+  onUpdateProduction,
+  onCancel,
+  onUncancel,
+  isUpdating,
+  currentUser,
+}) {
   const colors = ORDER_TYPE_COLORS[order.orderType] || ORDER_TYPE_COLORS.cake;
   const isPaid = order.isPaid === true;
+  const isCancelled = order.isCancelled === true;
   const requiresDeposit = order.footer?.depositPaid === true;
   const depositCollected = order.depositCollected === true;
 
@@ -79,15 +121,27 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
     ? order.footer.remaining
     : String(Math.max(0, parseFloat(priceVal) - parseFloat(depositVal)));
 
+  const currentProdStatus = order.productionStatus || 'received';
+
   return (
     <div
-      className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden transition-all hover:shadow-md hover:border-gray-300"
+      className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden hover:shadow-md ${
+        isCancelled ? 'border-red-300 bg-red-50/20 opacity-90' : 'border-gray-200 hover:border-gray-300'
+      }`}
       style={{ animation: 'cardIn 0.25s ease' }}
     >
       {/* Top color bar */}
-      <div style={{ height: '4px', background: isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }} />
+      <div style={{ height: '5px', background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }} />
 
       <div className="p-4">
+        {/* Cancelled Banner if applicable */}
+        {isCancelled && (
+          <div className="bg-red-600 text-white font-cairo font-bold text-xs px-3 py-1.5 rounded-lg mb-3 flex items-center justify-between shadow-sm">
+            <span>🚫 هذه الطلبية ملغية ({order.cancelledReason || 'تم الإلغاء بواسطة الموظف/الإدارة'})</span>
+            <span className="text-[11px] bg-red-800 px-2 py-0.5 rounded">بواسطة: {order.cancelledBy || 'الموظف'}</span>
+          </div>
+        )}
+
         {/* Row 1: ID + badges + date */}
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <div className="flex items-center gap-2 flex-wrap">
@@ -101,25 +155,27 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
               {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
             </span>
 
-            {/* Dynamic Status Badges */}
-            {isPaid ? (
-              <span className="bg-green-100 text-green-800 border border-green-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                ✓ تم السداد بالكامل ({order.paidBy || 'الصندوق'})
-              </span>
-            ) : requiresDeposit ? (
-              depositCollected ? (
-                <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                  ✓ عربون مُحَصَّل (${depositVal}) · باقي عند التسليم: ${remainingVal}
+            {/* Dynamic Payment & Status Badges */}
+            {!isCancelled && (
+              isPaid ? (
+                <span className="bg-green-100 text-green-800 border border-green-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                  ✓ تم السداد بالكامل ({order.paidBy || 'الصندوق'})
                 </span>
+              ) : requiresDeposit ? (
+                depositCollected ? (
+                  <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                    ✓ عربون مُحَصَّل (${depositVal}) · باقي عند التسليم: ${remainingVal}
+                  </span>
+                ) : (
+                  <span className="bg-amber-100 text-amber-800 border border-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 animate-pulse">
+                    ⏳ بانتظار تحصيل عربون: ${depositVal}
+                  </span>
+                )
               ) : (
-                <span className="bg-amber-100 text-amber-800 border border-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 animate-pulse">
-                  ⏳ بانتظار تحصيل عربون: ${depositVal}
+                <span className="bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                  ⏳ بانتظار تحصيل المبلغ الكامل عند التسليم (${priceVal})
                 </span>
               )
-            ) : (
-              <span className="bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                ⏳ بانتظار تحصيل المبلغ الكامل عند التسليم (${priceVal})
-              </span>
             )}
           </div>
           <span className="text-xs text-gray-400 font-cairo" dir="ltr">
@@ -129,8 +185,10 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
 
         {/* Row 2: Customer info */}
         <div className="flex items-center gap-3 mb-2.5">
-          {/* Avatar circle */}
-          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm" style={{ background: isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}>
+          <div
+            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm"
+            style={{ background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}
+          >
             {(order.header?.customerName || '?')[0]}
           </div>
           <div className="min-w-0">
@@ -150,52 +208,154 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
             {bodySummary(order.orderType, order.body) || '—'}
           </p>
           {order.header?.deliveryDate && (
-            <p className="text-xs text-gray-500 font-cairo mt-1">
-              <span className="font-bold text-indigo-900">📅 التسليم: </span>
-              {fmtDate(`${order.header.deliveryDate}T00:00:00`)} {order.header.dayName ? `(${order.header.dayName})` : ''} · {order.header.deliveryTime || '—'}
+            <p className="text-xs text-gray-500 font-cairo mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+              <span>
+                <span className="font-bold text-indigo-900">📅 التسليم: </span>
+                {fmtDate(`${order.header.deliveryDate}T00:00:00`)} {order.header.dayName ? `(${order.header.dayName})` : ''} · {order.header.deliveryTime || '—'}
+              </span>
+              {order.header?.deliveryMethod && (
+                <span>
+                  <span className="font-bold text-indigo-900">📍 طريقة التسليم: </span>
+                  {order.header.deliveryMethod}
+                </span>
+              )}
             </p>
           )}
+          {order.header?.deliveryAddress && (
+            <p className="text-xs text-purple-900 bg-purple-50 p-1.5 rounded mt-1.5 font-cairo border border-purple-200">
+              <span className="font-extrabold">📍 عنوان التوصيل: </span>
+              {order.header.deliveryAddress}
+            </p>
+          )}
+
+          {/* Reference photo display for kitchen & showroom */}
+          {order.body?.referencePhoto && (
+            <div className="mt-2 pt-2 border-t border-gray-200/80 flex items-center gap-2">
+              <img src={order.body.referencePhoto} alt="صورة المرجع" className="w-14 h-14 object-cover rounded border border-gray-300 shadow-sm bg-white" />
+              <div className="text-xs font-cairo">
+                <p className="font-bold text-gray-800">📸 يوجد صورة مرجعية للتصميم مرفقة في الطلب</p>
+                <p className="text-gray-500 text-[11px]">تظهر الصورة مطبوعة على نسختي المعرض والمصنع</p>
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* ── Row 3.5: Production Status Workflow (خاص بمراحل العمل والمصنع) ── */}
+        {!isCancelled && (
+          <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 rounded-xl p-3 mb-3.5 border border-slate-200 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold text-[#1a1a2e] font-cairo">🏭 مرحلة التحضير بالمصنع:</span>
+                <span className={`text-xs font-bold px-2.5 py-1 rounded-full border font-cairo ${PRODUCTION_STATUS_COLORS[currentProdStatus]}`}>
+                  {PRODUCTION_STATUS_LABELS[currentProdStatus] || currentProdStatus}
+                </span>
+              </div>
+
+              {/* Step-by-step advance buttons for kitchen/staff */}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {currentProdStatus === 'received' && (
+                  <button
+                    onClick={() => onUpdateProduction(order, 'in_progress')}
+                    disabled={isUpdating}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold px-3 py-1.5 rounded-lg shadow-sm font-cairo transition-transform active:scale-95 flex items-center gap-1 disabled:opacity-50"
+                  >
+                    👨‍🍳 البدء بالتحضير (نقل لقيد التنفيذ)
+                  </button>
+                )}
+                {currentProdStatus === 'in_progress' && (
+                  <>
+                    <button
+                      onClick={() => onUpdateProduction(order, 'ready')}
+                      disabled={isUpdating}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold px-3 py-1.5 rounded-lg shadow-sm font-cairo transition-transform active:scale-95 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      ✅ تحديد كجاهزة للتسليم
+                    </button>
+                    <button
+                      onClick={() => onUpdateProduction(order, 'received')}
+                      disabled={isUpdating}
+                      className="text-xs font-bold text-gray-600 bg-white hover:bg-gray-100 border px-2 py-1.5 rounded-lg font-cairo"
+                      title="إعادة إلى مستلمة بالمحل"
+                    >
+                      ↩️ تراجع
+                    </button>
+                  </>
+                )}
+                {currentProdStatus === 'ready' && (
+                  <>
+                    <button
+                      onClick={() => onUpdateProduction(order, 'delivered')}
+                      disabled={isUpdating}
+                      className="bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold px-3 py-1.5 rounded-lg shadow-sm font-cairo transition-transform active:scale-95 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      🚚 تأكيد التسليم للزبون
+                    </button>
+                    <button
+                      onClick={() => onUpdateProduction(order, 'in_progress')}
+                      disabled={isUpdating}
+                      className="text-xs font-bold text-gray-600 bg-white hover:bg-gray-100 border px-2 py-1.5 rounded-lg font-cairo"
+                      title="إعادة لقيد التنفيذ"
+                    >
+                      ↩️ تراجع
+                    </button>
+                  </>
+                )}
+                {currentProdStatus === 'delivered' && (
+                  <button
+                    onClick={() => onUpdateProduction(order, 'ready')}
+                    disabled={isUpdating}
+                    className="text-xs font-bold text-gray-500 bg-white hover:bg-gray-100 border px-2 py-1.5 rounded-lg font-cairo"
+                    title="إعادة إلى جاهزة للتسليم"
+                  >
+                    ↩️ تراجع عن التسليم
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Row 4: Financial balance box (Tailored for Cashier verification) */}
-        <div className="text-xs font-cairo mb-3.5 p-3 rounded-xl border bg-slate-50 border-slate-200 shadow-inner">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-gray-500 font-bold">السعر الإجمالي للطلب:</span>
-            <span className="font-extrabold text-slate-900 text-base" dir="ltr">${priceVal}</span>
+        {!isCancelled && (
+          <div className="text-xs font-cairo mb-3.5 p-3 rounded-xl border bg-slate-50 border-slate-200 shadow-inner">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-gray-500 font-bold">السعر الإجمالي للطلب:</span>
+              <span className="font-extrabold text-slate-900 text-base" dir="ltr">${priceVal}</span>
+            </div>
+
+            {requiresDeposit && (
+              <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-200">
+                <span className="text-indigo-900 font-semibold">
+                  قيمة العربون المقرر في الطلب:
+                </span>
+                <span className={`font-bold px-2 py-0.5 rounded ${depositCollected ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
+                  {depositCollected ? `✓ تم استلام العربون ($${depositVal})` : `⏳ لم يتم تحصيل العربون بعد ($${depositVal})`}
+                </span>
+              </div>
+            )}
+
+            {!isPaid && (
+              <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200 text-red-700">
+                <span className="font-extrabold">المتبقي المطلوب للتحصيل عند التسليم:</span>
+                <span className="font-extrabold bg-red-100 border border-red-300 px-2.5 py-0.5 rounded text-sm" dir="ltr">
+                  ${remainingVal}
+                </span>
+              </div>
+            )}
+
+            {isPaid && (
+              <div className="mt-2 text-green-700 font-bold text-center bg-green-100 py-1 rounded border border-green-200">
+                ✓ تم تسليم الطلبية وسداد إجمالي المستحقات الماليّة
+              </div>
+            )}
           </div>
+        )}
 
-          {requiresDeposit && (
-            <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-200">
-              <span className="text-indigo-900 font-semibold">
-                قيمة العربون المقرر في الطلب:
-              </span>
-              <span className={`font-bold px-2 py-0.5 rounded ${depositCollected ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
-                {depositCollected ? `✓ تم استلام العربون ($${depositVal})` : `⏳ لم يتم تحصيل العربون بعد ($${depositVal})`}
-              </span>
-            </div>
-          )}
-
-          {!isPaid && (
-            <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-slate-200 text-red-700">
-              <span className="font-extrabold">المتبقي المطلوب للتحصيل عند التسليم:</span>
-              <span className="font-extrabold bg-red-100 border border-red-300 px-2.5 py-0.5 rounded text-sm" dir="ltr">
-                ${remainingVal}
-              </span>
-            </div>
-          )}
-
-          {isPaid && (
-            <div className="mt-2 text-green-700 font-bold text-center bg-green-100 py-1 rounded border border-green-200">
-              ✓ تم تسليم الطلبية وسداد إجمالي المستحقات الماليّة
-            </div>
-          )}
-        </div>
-
-        {/* Row 5: Action buttons (Dynamic Cashier Workflow) */}
+        {/* Row 5: Action buttons */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-2 border-t border-gray-100">
           
           {/* STEP 1: Collect Deposit Button (When deposit required and not collected yet) */}
-          {!isPaid && requiresDeposit && !depositCollected && (
+          {!isCancelled && !isPaid && requiresDeposit && !depositCollected && (
             <button
               onClick={() => onCollectDeposit(order)}
               disabled={isUpdating}
@@ -206,7 +366,7 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
           )}
 
           {/* STEP 2 / Full Payment: Mark remaining balance as collected upon pickup */}
-          {!isPaid && (
+          {!isCancelled && !isPaid && (
             <button
               onClick={() => onMarkPaid(order)}
               disabled={isUpdating}
@@ -220,8 +380,8 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
             </button>
           )}
 
-          {/* UNDO DEPOSIT ACTION (If cashier collected deposit by mistake) */}
-          {!isPaid && requiresDeposit && depositCollected && (
+          {/* UNDO DEPOSIT ACTION */}
+          {!isCancelled && !isPaid && requiresDeposit && depositCollected && (
             <button
               onClick={() => onUndoDeposit(order)}
               disabled={isUpdating}
@@ -233,7 +393,7 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
           )}
 
           {/* UNDO FULL PAYMENT ACTION */}
-          {isPaid && (
+          {!isCancelled && isPaid && (
             <button
               onClick={() => onUndoPaid(order)}
               disabled={isUpdating}
@@ -244,12 +404,34 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
           )}
 
           {/* Edit button — ONLY rendered for admin / ordinary staff (HIDDEN for Cashiers!) */}
-          {onEdit && (
+          {!isCancelled && onEdit && (
             <button
               onClick={() => onEdit(order)}
               className="border-2 border-[#1a1a2e] text-[#1a1a2e] hover:bg-[#1a1a2e] hover:text-white text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1"
             >
               ✏️ تعديل تفاصيل الطلبية
+            </button>
+          )}
+
+          {/* Cancel Order Action */}
+          {!isCancelled && (
+            <button
+              onClick={() => onCancel(order)}
+              disabled={isUpdating}
+              className="border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1 disabled:opacity-50"
+            >
+              🚫 إلغاء الطلبية
+            </button>
+          )}
+
+          {/* Uncancel Action if cancelled */}
+          {isCancelled && (
+            <button
+              onClick={() => onUncancel(order)}
+              disabled={isUpdating}
+              className="bg-gray-700 hover:bg-gray-800 text-white text-xs font-bold py-2.5 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1 disabled:opacity-50 col-span-2"
+            >
+              ↩️ استعادة الطلبية الملغية (تفعيل مجدد)
             </button>
           )}
 
@@ -268,22 +450,32 @@ function OrderCard({ order, onEdit, onWhatsApp, onMarkPaid, onUndoPaid, onCollec
 
 // ── Empty state ──────────────────────────────────────────────────────────────
 
-function EmptyState({ hasSearch, paymentFilter }) {
+function EmptyState({ hasSearch, paymentFilter, showCancelledOnly }) {
+  if (showCancelledOnly) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="text-5xl mb-4">🙌</div>
+        <p className="text-gray-700 text-base font-bold font-cairo mb-1">لا توجد أي طلبات ملغية في النظام!</p>
+        <p className="text-gray-400 text-xs font-cairo mt-1">القائمة نظيفة، ويمكنك العودة لباقي التبويبات لعرض الطلبات النشطة.</p>
+      </div>
+    );
+  }
+
   const labelMap = {
     unpaid: 'لا توجد طلبات معلقة بانتظار التحصيل! 🎉',
     deposit_pending: 'لا توجد طلبات بانتظار تحصيل عربون حالياً.',
     paid: 'لا توجد طلبات مسددة بالكامل في القائمة بعد.',
-    all: 'لا توجد طلبات مسجلة حتى الآن.',
+    all: 'لا توجد طلبات مطابقة لاختيارات التصنيف الحالية.',
   };
 
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="text-5xl mb-4">{hasSearch ? '🔍' : paymentFilter === 'unpaid' ? '✨' : '📋'}</div>
       <p className="text-gray-700 text-base font-bold font-cairo mb-1">
-        {hasSearch ? 'لم يتم العثور على طلبات مطابقة للبحث' : (labelMap[paymentFilter] || labelMap.all)}
+        {hasSearch ? 'لم يتم العثور على طلبات مطابقة للبحث أو التواريخ' : (labelMap[paymentFilter] || labelMap.all)}
       </p>
       <p className="text-gray-400 text-xs font-cairo mt-1">
-        {hasSearch ? 'جرب البحث بكلمة أو رقم هاتف مختلف' : 'يمكنك تبديل التصفية لعرض باقي قائمة الطلبات'}
+        {hasSearch ? 'جرب البحث بكلمة، أو تغيير تصنيف التاريخ ومرحلة المصنع' : 'يمكنك تبديل التصفية لعرض باقي قائمة الطلبات'}
       </p>
     </div>
   );
@@ -291,10 +483,6 @@ function EmptyState({ hasSearch, paymentFilter }) {
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-/**
- * OrderHistoryView — Browse, search, and manage past orders from Firestore.
- * Cashier role gets a tailored two-step down payment verification interface without creation/editing rights.
- */
 export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -303,9 +491,12 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
   const [searchQuery, setSearchQuery] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  // Default to 'unpaid' filter so cashier instantly sees active awaiting collections
+  // Filter States
   const [paymentFilter, setPaymentFilter] = useState('unpaid'); 
   const [categoryFilter, setCategoryFilter] = useState('all');
+  const [productionFilter, setProductionFilter] = useState('all');
+  const [dateFilter, setDateFilter] = useState('all');
+  const [showCancelledOnly, setShowCancelledOnly] = useState(false);
 
   const isCashier = currentUser?.role === 'cashier';
 
@@ -378,7 +569,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       isPaid: true,
       paidAt: new Date().toISOString(),
       paidBy: cashierName,
-      // Ensure deposit is also marked collected if paying entirely
       depositCollected: true,
       depositCollectedBy: order.depositCollectedBy || cashierName,
     };
@@ -411,9 +601,78 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     }
   };
 
+  // ── Production Status updates ──
+  const handleUpdateProduction = async (order, newStatus) => {
+    setUpdatingId(order.id);
+    const staffName = currentUser?.arabicName || currentUser?.username || 'طاقم المصنع';
+    try {
+      await updateProductionStatus(order.id, newStatus, staffName);
+      setOrders(prev => prev.map(o => o.id === order.id ? {
+        ...o,
+        productionStatus: newStatus,
+        productionStatusUpdatedAt: new Date().toISOString(),
+        productionStatusUpdatedBy: staffName
+      } : o));
+    } catch (e) {
+      alert('تعذر تحديث حالة التحضير بالمصنع. تأكد من الإنترنت.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ── Order Cancellation ──
+  const handleCancelOrder = async (order) => {
+    const reason = window.prompt('سبب إلغاء الطلبية (اختياري):', 'إلغاء بناءً على طلب الزبون / تعديل موعد');
+    if (reason === null) return; // User pressed cancel on prompt
+
+    setUpdatingId(order.id);
+    const staffName = currentUser?.arabicName || currentUser?.username || 'الموظف';
+    try {
+      await cancelOrder(order.id, reason, staffName);
+      setOrders(prev => prev.map(o => o.id === order.id ? {
+        ...o,
+        isCancelled: true,
+        cancelledReason: reason || 'إلغاء بناءً على طلب الزبون',
+        cancelledBy: staffName,
+        cancelledAt: new Date().toISOString()
+      } : o));
+    } catch (e) {
+      alert('حدث خطأ أثناء محاولة إلغاء الطلب.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ── Uncancel Order ──
+  const handleUncancelOrder = async (order) => {
+    if (!window.confirm('هل تريد استعادة هذه الطلبية الملغية وإعادتها لقائمة الطلبات النشطة؟')) return;
+    setUpdatingId(order.id);
+    try {
+      await uncancelOrder(order.id);
+      setOrders(prev => prev.map(o => o.id === order.id ? {
+        ...o,
+        isCancelled: false,
+        cancelledReason: null,
+        cancelledBy: null,
+        cancelledAt: null
+      } : o));
+    } catch (e) {
+      alert('حدث خطأ أثناء استعادة الطلب.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
   // ── Filter + search logic ──
   const filteredOrders = useMemo(() => {
     let result = orders;
+
+    // 0. Cancelled view toggle
+    if (showCancelledOnly) {
+      return result.filter(o => o.isCancelled === true);
+    } else {
+      result = result.filter(o => o.isCancelled !== true);
+    }
 
     // 1. Payment status filter
     if (paymentFilter === 'unpaid') {
@@ -429,7 +688,27 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       result = result.filter(o => o.orderType === categoryFilter);
     }
 
-    // 3. Search — match against ID, customer name, or phone
+    // 3. Production status filter
+    if (productionFilter !== 'all') {
+      result = result.filter(o => (o.productionStatus || 'received') === productionFilter);
+    }
+
+    // 4. Delivery Date filter (Due Today / Tomorrow)
+    if (dateFilter !== 'all') {
+      const todayStr = new Date().toISOString().split('T')[0];
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+
+      if (dateFilter === 'today') {
+        // Includes orders due today AND past-due uncompleted/unpaid orders!
+        result = result.filter(o => o.header?.deliveryDate === todayStr || (o.header?.deliveryDate && o.header?.deliveryDate < todayStr && o.productionStatus !== 'delivered' && !o.isPaid));
+      } else if (dateFilter === 'tomorrow') {
+        result = result.filter(o => o.header?.deliveryDate === tomorrowStr);
+      }
+    }
+
+    // 5. Search
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
       result = result.filter(o => {
@@ -441,7 +720,17 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     }
 
     return result;
-  }, [orders, paymentFilter, categoryFilter, searchQuery]);
+  }, [orders, paymentFilter, categoryFilter, productionFilter, dateFilter, showCancelledOnly, searchQuery]);
+
+  // Count orders due today for quick dashboard hint
+  const dueTodayCount = useMemo(() => {
+    const todayStr = new Date().toISOString().split('T')[0];
+    return orders.filter(o => !o.isCancelled && (o.header?.deliveryDate === todayStr || (o.header?.deliveryDate < todayStr && o.productionStatus !== 'delivered' && !o.isPaid))).length;
+  }, [orders]);
+
+  const cancelledCount = useMemo(() => {
+    return orders.filter(o => o.isCancelled === true).length;
+  }, [orders]);
 
   // ── Actions ──
   const handleWhatsApp = (order) => {
@@ -453,7 +742,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     <div className="min-h-screen bg-[#eaeaf2]" dir="rtl">
 
       {/* ── Top bar ── */}
-      <div className="flex items-center justify-between max-w-[800px] mx-auto px-4 py-2.5">
+      <div className="flex items-center justify-between max-w-[850px] mx-auto px-4 py-2.5">
         <div className="flex items-center gap-2">
           {/* User badge */}
           <div className={`text-white text-sm font-bold px-4 py-1.5 rounded-full font-cairo flex items-center gap-1.5 ${isCashier ? 'bg-indigo-800 shadow' : 'bg-[#1b2740]'}`}>
@@ -463,18 +752,17 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* + New Order button (HIDDEN for Cashier role!) */}
           {onNewOrder && !isCashier && (
             <button
               onClick={onNewOrder}
-              className="bg-[#1a1a2e] text-white text-sm font-bold px-3.5 py-1 rounded-lg font-cairo hover:bg-[#2d2d4a] transition-colors shadow-sm"
+              className="bg-[#1a1a2e] text-white text-sm font-bold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-[#2d2d4a] transition-colors shadow-sm"
             >
               + طلب جديد
             </button>
           )}
           <button
             onClick={onLogout}
-            className="border border-[#1a1a2e] text-[#1a1a2e] text-sm font-bold px-3 py-1 rounded-lg font-cairo hover:bg-[#1a1a2e] hover:text-white transition-colors"
+            className="border border-[#1a1a2e] text-[#1a1a2e] text-sm font-bold px-3 py-1.5 rounded-lg font-cairo hover:bg-[#1a1a2e] hover:text-white transition-colors"
           >
             تسجيل الخروج
           </button>
@@ -482,21 +770,21 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       </div>
 
       {/* ── Main content card ── */}
-      <div className="max-w-[800px] mx-auto px-4 pb-12">
+      <div className="max-w-[850px] mx-auto px-4 pb-12">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
 
           {/* Page title & Refresh */}
-          <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 border-b border-gray-100 pb-3">
             <div>
               <h1 className="text-xl font-extrabold text-[#1a1a2e] font-cairo flex items-center gap-2">
                 <span>📋</span>
-                <span>{isCashier ? 'إدارة التحصيل المالي واستلام العربون' : 'سجل الطلبات والمتابعة'}</span>
+                <span>{isCashier ? 'إدارة التحصيل المالي واستلام العربون' : 'سجل الطلبات ومتابعة التحضير بالمصنع'}</span>
               </h1>
               <p className="text-xs text-gray-500 font-cairo mt-0.5">
-                {isCashier ? 'قم بتسجيل استلام العربون المقدم أولاً، وتأكيد استلام المتبقي عند التسليم النهائي' : 'ابحث، تابع حالات الدفع، وعَدّل على أي طلب بسهولة'}
+                {isCashier ? 'قم بتسجيل استلام العربون المقدم أولاً، وتأكيد استلام المتبقي عند التسليم النهائي' : 'تابع مواعيد التسليم، حالات التحضير بالمصنع، وعَدّل على أي طلب بسهولة'}
               </p>
             </div>
-            <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 shrink-0">
+            <div className="flex items-center gap-2 shrink-0">
               {lastRefreshed && (
                 <span className="text-[11px] font-bold text-gray-500 bg-gray-100 px-2.5 py-1.5 rounded-lg border border-gray-200 font-cairo shadow-inner">
                   🕒 آخر تحديث: {lastRefreshed}
@@ -512,34 +800,114 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
             </div>
           </div>
 
-          {/* 1. Payment Status Segmented Filter Bar */}
-          <div className="mb-4">
-            <span className="text-xs font-bold text-gray-700 font-cairo mb-1.5 block">تصنيف حسب حالة التحصيل المالي:</span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
-              {PAYMENT_TABS.map(tab => {
-                const isActive = paymentFilter === tab.key;
-                const activeColorMap = {
-                  unpaid: 'bg-amber-500 text-white shadow-md border-amber-600 font-extrabold',
-                  deposit_pending: 'bg-indigo-600 text-white shadow-md border-indigo-700 font-extrabold',
-                  paid: 'bg-green-600 text-white shadow-md border-green-700 font-extrabold',
-                  all: 'bg-[#1a1a2e] text-white shadow-md border-[#1a1a2e] font-extrabold',
-                };
-                return (
+          {/* ── "Due Today" Quick Alert Dashboard Banner ── */}
+          {!loading && dueTodayCount > 0 && !showCancelledOnly && (
+            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex items-center justify-between gap-3 shadow-sm font-cairo">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">⏰</span>
+                <div>
+                  <h3 className="text-sm font-extrabold text-amber-950">تنبيه مواعيد التسليم: يوجد لديك ({dueTodayCount}) طلبات موعد تسليمها اليوم أو فائتة لم تكتمل!</h3>
+                  <p className="text-xs text-amber-800">تأكد من جهوزيتها في المصنع وتحصيل المستحقات المالية</p>
+                </div>
+              </div>
+              {dateFilter !== 'today' && (
+                <button
+                  onClick={() => setDateFilter('today')}
+                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shrink-0 shadow"
+                >
+                  عرض طلبات اليوم فقط
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* 1. Delivery Date Quick Filter Bar */}
+          <div className="mb-3.5 bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 overflow-x-auto">
+                <span className="text-xs font-extrabold text-indigo-950 font-cairo ml-1">📅 موعد التسليم:</span>
+                {DATE_TABS.map(tab => (
                   <button
                     key={tab.key}
-                    onClick={() => setPaymentFilter(tab.key)}
-                    className={`py-2 px-2 rounded-lg text-xs font-cairo transition-all text-center leading-snug ${
-                      isActive ? activeColorMap[tab.key] : 'text-gray-600 hover:bg-slate-200 font-semibold'
+                    onClick={() => { setDateFilter(tab.key); setShowCancelledOnly(false); }}
+                    className={`text-xs font-bold px-3.5 py-1.5 rounded-lg font-cairo transition-all ${
+                      dateFilter === tab.key && !showCancelledOnly
+                        ? 'bg-indigo-700 text-white shadow font-extrabold'
+                        : 'bg-white text-indigo-900 hover:bg-indigo-100 border border-indigo-200/60'
+                    }`}
+                  >
+                    {tab.label} {tab.key === 'today' && dueTodayCount > 0 && `(${dueTodayCount})`}
+                  </button>
+                ))}
+              </div>
+
+              {/* Cancelled View Button */}
+              <button
+                onClick={() => setShowCancelledOnly(!showCancelledOnly)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg font-cairo transition-all border flex items-center gap-1 ${
+                  showCancelledOnly
+                    ? 'bg-red-600 text-white border-red-700 shadow font-extrabold'
+                    : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                }`}
+              >
+                <span>🚫 الطلبات الملغية</span>
+                <span className="bg-white text-red-800 rounded-full px-1.5 text-[10px] font-extrabold border border-red-200">{cancelledCount}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Production Status Filter Bar (For Kitchen / Staff) */}
+          {!showCancelledOnly && (
+            <div className="mb-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+              <span className="text-xs font-bold text-slate-800 font-cairo mb-1.5 block">🏭 تصفية حسب مرحلة العمل بالمصنع:</span>
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
+                {PRODUCTION_TABS.map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => setProductionFilter(tab.key)}
+                    className={`py-1.5 px-2 rounded-lg text-xs font-cairo transition-all text-center leading-snug ${
+                      productionFilter === tab.key
+                        ? 'bg-[#1a1a2e] text-white font-extrabold shadow-sm'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 font-bold'
                     }`}
                   >
                     {tab.label}
                   </button>
-                );
-              })}
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* 2. Search bar */}
+          {/* 3. Payment Status Segmented Filter Bar */}
+          {!showCancelledOnly && (
+            <div className="mb-4">
+              <span className="text-xs font-bold text-gray-700 font-cairo mb-1.5 block">💰 تصنيف حسب حالة التحصيل المالي (للصندوق):</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
+                {PAYMENT_TABS.map(tab => {
+                  const isActive = paymentFilter === tab.key;
+                  const activeColorMap = {
+                    unpaid: 'bg-amber-500 text-white shadow-md border-amber-600 font-extrabold',
+                    deposit_pending: 'bg-indigo-600 text-white shadow-md border-indigo-700 font-extrabold',
+                    paid: 'bg-green-600 text-white shadow-md border-green-700 font-extrabold',
+                    all: 'bg-slate-800 text-white shadow-md border-slate-900 font-extrabold',
+                  };
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setPaymentFilter(tab.key)}
+                      className={`py-2 px-2 rounded-lg text-xs font-cairo transition-all text-center leading-snug ${
+                        isActive ? activeColorMap[tab.key] : 'text-gray-600 hover:bg-slate-200 font-semibold'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 4. Search bar */}
           <div className="relative mb-3.5">
             <input
               type="text"
@@ -559,7 +927,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
             )}
           </div>
 
-          {/* 3. Category tabs & Result Count */}
+          {/* 5. Category tabs & Result Count */}
           <div className="flex items-center gap-1.5 mb-5 overflow-x-auto pb-1 border-b border-gray-100 pt-1">
             <span className="text-xs text-gray-400 font-cairo font-bold ml-1">الصنف:</span>
             {FILTER_TABS.map(tab => (
@@ -575,7 +943,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                 {tab.label}
               </button>
             ))}
-            {/* Results count badge */}
             <span className="text-xs text-gray-600 font-bold font-cairo mr-auto bg-gray-100 px-3 py-1 rounded-full border border-gray-200">
               عدد الطلبات المعروضة: {filteredOrders.length}
             </span>
@@ -593,15 +960,16 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
           {loading && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mb-3"></div>
-              <p className="text-sm font-bold text-gray-500 font-cairo">جاري التزامن وجلب أحدث بيانات التحصيل من السحابة...</p>
+              <p className="text-sm font-bold text-gray-500 font-cairo">جاري التزامن وجلب أحدث بيانات التحصيل والمصنع من السحابة...</p>
             </div>
           )}
 
           {/* Orders grid */}
           {!loading && filteredOrders.length === 0 && (
             <EmptyState
-              hasSearch={!!searchQuery.trim() || categoryFilter !== 'all'}
+              hasSearch={!!searchQuery.trim() || categoryFilter !== 'all' || dateFilter !== 'all' || productionFilter !== 'all'}
               paymentFilter={paymentFilter}
+              showCancelledOnly={showCancelledOnly}
             />
           )}
 
@@ -617,6 +985,9 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                   onUndoPaid={handleUndoPaid}
                   onCollectDeposit={handleCollectDeposit}
                   onUndoDeposit={handleUndoDeposit}
+                  onUpdateProduction={handleUpdateProduction}
+                  onCancel={!isCashier ? handleCancelOrder : null}
+                  onUncancel={!isCashier ? handleUncancelOrder : null}
                   isUpdating={updatingId === order.id}
                   currentUser={currentUser}
                 />
@@ -627,7 +998,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         </div>
       </div>
 
-      {/* Card entrance animation */}
       <style>{`
         @keyframes cardIn {
           from { opacity: 0; transform: translateY(6px); }

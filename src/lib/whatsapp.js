@@ -128,6 +128,7 @@ export function buildWhatsAppUrl(order) {
     `📅 تاريخ التسليم: ${formatDate(header?.deliveryDate)}`,
     `🕐 الوقت: ${header?.deliveryTime || '—'}`,
     `📍 التسليم: ${header?.deliveryMethod || '—'}`,
+    header?.deliveryAddress ? `📍 عنوان التوصيل: ${header.deliveryAddress}` : null,
     `💰 السعر الإجمالي: $${footer?.price || '—'}`,
     footer?.depositPaid ? `💵 عربون مطلوب (يُدفع للصندوق): $${footer?.depositAmount || '0'}` : null,
     footer?.depositPaid ? `📋 المتبقي عند تسليم الطلبية: $${footer?.remaining || '0'}` : null,

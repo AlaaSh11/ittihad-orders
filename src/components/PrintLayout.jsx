@@ -111,6 +111,11 @@ function PrintHeader({ id, header, createdAt }) {
         left={<PField label="التسليم" value={header?.deliveryMethod} />}
         right={<PField label="مستلم الطلبية" value={header?.recipient} />}
       />
+      {header?.deliveryAddress && (
+        <div style={{ marginBottom: '1.5mm' }}>
+          <PField label="عنوان التوصيل" value={header.deliveryAddress} />
+        </div>
+      )}
     </div>
   );
 }
@@ -156,6 +161,13 @@ function PrintCakeBody({ body }) {
       {selectedAddons && (
         <div style={{ marginBottom: '1.5mm' }}>
           <PField label="إضافات / اكسسوارات" value={selectedAddons} />
+        </div>
+      )}
+      {/* Reference Photo */}
+      {body?.referencePhoto && (
+        <div style={{ marginBottom: '1.5mm', textAlign: 'center', border: '1px dashed #aaa', padding: '1mm', borderRadius: '4px' }}>
+          <span className="pf-label" style={{ display: 'block', marginBottom: '1mm' }}>📸 صورة التصميم المرجعية</span>
+          <img src={body.referencePhoto} alt="مرجع التصميم" style={{ maxHeight: '42mm', maxWidth: '100%', objectFit: 'contain', margin: '0 auto' }} />
         </div>
       )}
     </div>

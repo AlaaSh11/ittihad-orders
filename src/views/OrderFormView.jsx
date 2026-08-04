@@ -29,6 +29,7 @@ function makeEmptyHeader(user) {
     dayName: '',
     deliveryTime: DEFAULT_TIME,
     deliveryMethod: '',
+    deliveryAddress: '',
     recipient: user?.role !== 'admin' ? (user?.arabicName || '') : RECEIVER_OPTIONS[0],
   };
 }
@@ -178,6 +179,8 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, editin
           depositCollectedBy: null,
           paidAt: null,
           paidBy: null,
+          productionStatus: 'received',
+          isCancelled: false,
         };
         const saved = await createOrder(order);
         setSavedOrder(saved);

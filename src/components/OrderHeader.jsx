@@ -143,6 +143,20 @@ export default function OrderHeader({ data, onChange, locked = false, orderId, c
           disabled={locked || !isAdmin}
         />
       </div>
+
+      {/* ── Delivery Address — shown only when a delivery method is chosen ── */}
+      {data.deliveryMethod && data.deliveryMethod.includes('توصيل') && (
+        <div className="mt-2">
+          <TextField
+            label="عنوان التوصيل"
+            id="deliveryAddress"
+            value={data.deliveryAddress || ''}
+            onChange={(v) => onChange('deliveryAddress', v)}
+            readOnly={locked}
+            placeholder="المنطقة، الشارع، البناية..."
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -214,7 +214,51 @@ function normalizeOrder(data) {
     ...data,
     isPaid: data.isPaid !== undefined ? data.isPaid : isOldLegacy ? true : false,
     depositCollected: data.depositCollected !== undefined ? data.depositCollected : false,
+    productionStatus: data.productionStatus || 'received',
+    isCancelled: data.isCancelled || false,
   };
+}
+
+/**
+ * Update factory production status.
+ * @param {string} id
+ * @param {string} newStatus 'received' | 'in_progress' | 'ready' | 'delivered'
+ * @param {string} updatedBy Name of worker/staff
+ */
+export async function updateProductionStatus(id, newStatus, updatedBy) {
+  return updateOrder(id, {
+    productionStatus: newStatus,
+    productionStatusUpdatedAt: new Date().toISOString(),
+    productionStatusUpdatedBy: updatedBy || 'المصنع',
+  });
+}
+
+/**
+ * Cancel an order.
+ * @param {string} id
+ * @param {string} reason
+ * @param {string} cancelledBy
+ */
+export async function cancelOrder(id, reason, cancelledBy) {
+  return updateOrder(id, {
+    isCancelled: true,
+    cancelledReason: reason || 'إلغاء من قبل الزبون / الإدارة',
+    cancelledAt: new Date().toISOString(),
+    cancelledBy: cancelledBy || 'الموظف',
+  });
+}
+
+/**
+ * Undo cancellation of an order.
+ * @param {string} id
+ */
+export async function uncancelOrder(id) {
+  return updateOrder(id, {
+    isCancelled: false,
+    cancelledReason: null,
+    cancelledAt: null,
+    cancelledBy: null,
+  });
 }
 
 /**
