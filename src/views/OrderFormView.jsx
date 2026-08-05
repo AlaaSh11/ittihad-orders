@@ -4,6 +4,7 @@ import { createOrder, updateOrder, getNextOrderId, peekCurrentOrderId, syncCount
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { RECEIVER_OPTIONS } from '../constants/receiverOptions';
 import { DEFAULT_TIME } from '../constants/timeSlots';
+import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
 
 import OrderHeader from '../components/OrderHeader';
 import OrderTypeSelector from '../components/OrderTypeSelector';
@@ -277,7 +278,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
             </button>
           )}
           {/* Factory / KDS switch button for admin and staff */}
-          {onFactory && (
+          {onFactory && ENABLE_FACTORY_SYSTEM && (
             <button
               onClick={onFactory}
               className="bg-amber-600 text-white text-sm font-extrabold px-3 py-1 rounded border border-amber-700 font-cairo hover:bg-amber-700 transition-colors flex items-center gap-1 shadow-sm"

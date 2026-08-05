@@ -4,6 +4,7 @@ import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
 import OrderHistoryView from './views/OrderHistoryView';
 import FactoryView from './views/FactoryView';
+import { ENABLE_FACTORY_SYSTEM } from './constants/featureFlags';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
@@ -73,8 +74,8 @@ export default function App() {
   const isCashier = currentUser.role === 'cashier';
   const isFactory = currentUser.role === 'factory';
 
-  // Factory role is directed exclusively to the Kitchen Display System (KDS)
-  if (isFactory || currentView === 'factory') {
+  // Factory role is directed exclusively to the Kitchen Display System (KDS) when feature is enabled
+  if (ENABLE_FACTORY_SYSTEM && (isFactory || currentView === 'factory')) {
     return (
       <FactoryView
         currentUser={currentUser}
@@ -84,8 +85,8 @@ export default function App() {
     );
   }
 
-  // Cashiers are restricted exclusively to the Order History & Payment management dashboard
-  if (isCashier || currentView === 'history') {
+  // Cashiers (and factory accounts when KDS is disabled) are directed to the Order History dashboard
+  if (isCashier || isFactory || currentView === 'history') {
     return (
       <OrderHistoryView
         currentUser={currentUser}

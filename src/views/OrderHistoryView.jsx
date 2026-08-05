@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { listOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder } from '../lib/ordersStore';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
+import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
 
 // ── Arabic labels and color mappings ────────────────────────────────────────────
 const ORDER_TYPE_LABELS = {
@@ -241,7 +242,7 @@ function OrderCard({
         </div>
 
         {/* ── Row 3.5: Production Status Workflow (خاص بمراحل العمل والمصنع) ── */}
-        {!isCancelled && (
+        {!isCancelled && ENABLE_FACTORY_SYSTEM && (
           <div className="bg-gradient-to-r from-slate-50 to-indigo-50/50 rounded-xl p-3 mb-3.5 border border-slate-200 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
@@ -760,7 +761,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
               + طلب جديد
             </button>
           )}
-          {onFactory && !isCashier && (
+          {onFactory && !isCashier && ENABLE_FACTORY_SYSTEM && (
             <button
               onClick={onFactory}
               className="bg-amber-600 text-white text-sm font-extrabold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-amber-700 transition-colors shadow-sm flex items-center gap-1.5"
@@ -866,7 +867,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
           </div>
 
           {/* 2. Production Status Filter Bar (For Kitchen / Staff) */}
-          {!showCancelledOnly && (
+          {!showCancelledOnly && ENABLE_FACTORY_SYSTEM && (
             <div className="mb-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
               <span className="text-xs font-bold text-slate-800 font-cairo mb-1.5 block">🏭 تصفية حسب مرحلة العمل بالمصنع:</span>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
