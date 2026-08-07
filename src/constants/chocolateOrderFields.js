@@ -2,9 +2,6 @@
 // نوع الشوكولا — Chocolate type options
 // ─────────────────────────────────────────────────────────────────────────────
 export const CHOCOLATE_TYPES = [
-  'شوكولا داكن',
-  'شوكولا حليب',
-  'شوكولا أبيض',
   'بلجيكي',
   'وطني',
 ];
@@ -13,9 +10,6 @@ export const CHOCOLATE_TYPES = [
 // unit: 'حبة'  → pieces   |  unit: 'كيلو' → kilograms
 // To change a unit, edit this map only — no component logic changes needed.
 export const CHOCOLATE_UNIT_MAP = {
-  'شوكولا داكن':  'حبة',
-  'شوكولا حليب':  'حبة',
-  'شوكولا أبيض':  'حبة',
   'بلجيكي':       'حبة',
   'وطني':         'حبة',
 };
