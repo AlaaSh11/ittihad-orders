@@ -3,7 +3,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 export const CHOCOLATE_TYPES = [
   'بلجيكي',
-  'وطني',
+  'صواني',
 ];
 
 // Quantity unit label per chocolate type.
@@ -11,7 +11,7 @@ export const CHOCOLATE_TYPES = [
 // To change a unit, edit this map only — no component logic changes needed.
 export const CHOCOLATE_UNIT_MAP = {
   'بلجيكي':       'حبة',
-  'وطني':         'حبة',
+  'صواني':         'حبة',
 };
 export const DEFAULT_CHOCOLATE_UNIT = 'حبة';
 
