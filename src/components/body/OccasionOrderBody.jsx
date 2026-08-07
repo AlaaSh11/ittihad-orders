@@ -1,7 +1,6 @@
 import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
-import MultiSelectField from '../ui/MultiSelectField';
 import {
   HOSPITALITY_TYPES,
   OCCASION_WRAPPING_COLORS,
@@ -110,14 +109,13 @@ export default function OccasionOrderBody({ data, onChange }) {
         onChange={(v) => onChange('napkinHolderCount', v)}
       />
 
-      {/* عدد السلال — now multi-select (value stored as string[]) */}
-      <MultiSelectField
-        label="عدد السلال/حواني"
+      {/* عدد السلال — now single-select */}
+      <SelectField
+        label="عدد السلال/صواني"
         id="basketCount"
         options={OCCASION_BASKET_COUNTS}
-        value={data.basketCount}
+        value={data.basketCount || ''}
         onChange={(v) => onChange('basketCount', v)}
-        rows={5}
       />
 
       {/* لون ورق اللف — REMOVED per spec */}

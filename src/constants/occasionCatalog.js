@@ -29,9 +29,9 @@ export const OCCASION_WRAPPING_METHODS = [
   'لف مكنة',
 ];
 
-// عدد السلال — Basket count options (used for multi-select)
+// عدد السلال — Basket count options (used for single-select)
 export const OCCASION_BASKET_COUNTS = [
-  'بدون سواني',
+  'بدون صواني',
   '1',
   '2',
   '3',
