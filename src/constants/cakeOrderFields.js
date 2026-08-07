@@ -97,13 +97,9 @@ export const DEFAULT_PHOTO_SOURCE = 'المجموعة';
 // component logic needs to change.
 // ─────────────────────────────────────────────────────────────────────────────
 export const SHAPE_SERVES_MAP = {
-  // Heart shapes are limited to smaller sizes that can hold the heart form cleanly
-  'قلب': [6, 10, 18, 22, 27, 34, 40],
-  // Round cakes support all sizes
-  'مدور': [6, 10, 18, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
-  // Rectangular cakes support all sizes (including the rectangular dimension entries)
-  'مستطيل': [15, 16, 19, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
-  // Custom / group shape — no restriction, show everything
+  'قلب': [6, 10, 15, 16, 18, 19, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
+  'مدور': [6, 10, 15, 16, 18, 19, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
+  'مستطيل': [6, 10, 15, 16, 18, 19, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
   'الشكل على المجموعة': [6, 10, 15, 16, 18, 19, 22, 27, 34, 40, 45, 54, 60, 66, 81, 93, 107, 120, 133, 150],
 };
 
