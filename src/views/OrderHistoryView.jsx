@@ -94,6 +94,15 @@ function bodySummary(orderType, body) {
   return '';
 }
 
+function fullOrderSummary(order) {
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    return order.items
+      .map((item, idx) => `[${ORDER_TYPE_LABELS[item.orderType]}] ${bodySummary(item.orderType, item.body)}`)
+      .join(' | ');
+  }
+  return bodySummary(order.orderType, order.body) || '—';
+}
+
 // ── Order Card ───────────────────────────────────────────────────────────────
 
 function OrderCard({
@@ -110,7 +119,10 @@ function OrderCard({
   isUpdating,
   currentUser,
 }) {
-  const colors = ORDER_TYPE_COLORS[order.orderType] || ORDER_TYPE_COLORS.cake;
+  const isMultiItem = Array.isArray(order.items) && order.items.length > 0;
+  // Use the color of the first item, or cake if none
+  const mainType = isMultiItem ? order.items[0].orderType : order.orderType;
+  const colors = ORDER_TYPE_COLORS[mainType] || ORDER_TYPE_COLORS.cake;
   const isPaid = order.isPaid === true;
   const isCancelled = order.isCancelled === true;
   const requiresDeposit = order.footer?.depositPaid === true;
@@ -149,12 +161,29 @@ function OrderCard({
             <span className="text-sm font-bold font-cairo" dir="ltr" style={{ color: '#1a1a2e', fontFamily: "'Courier New', monospace", letterSpacing: '0.5px' }}>
               {order.id}
             </span>
-            <span
-              className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
-              style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
-            >
-              {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
-            </span>
+            
+            {/* Multiple badges if cart, else single badge */}
+            {isMultiItem ? (
+              order.items.map((item, idx) => {
+                const c = ORDER_TYPE_COLORS[item.orderType] || ORDER_TYPE_COLORS.cake;
+                return (
+                  <span
+                    key={idx}
+                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                    style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+                  >
+                    {ORDER_TYPE_LABELS[item.orderType] || item.orderType}
+                  </span>
+                );
+              })
+            ) : (
+              <span
+                className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+              >
+                {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
+              </span>
+            )}
 
             {/* Dynamic Payment & Status Badges */}
             {!isCancelled && (
@@ -206,7 +235,7 @@ function OrderCard({
         <div className="bg-gray-50 rounded-lg p-2.5 mb-3 border border-gray-100">
           <p className="text-xs text-gray-600 font-cairo leading-relaxed">
             <span className="font-bold text-gray-800">التفاصيل: </span>
-            {bodySummary(order.orderType, order.body) || '—'}
+            {fullOrderSummary(order)}
           </p>
           {order.header?.deliveryDate && (
             <p className="text-xs text-gray-500 font-cairo mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
@@ -230,12 +259,22 @@ function OrderCard({
           )}
 
           {/* Reference photo display for kitchen & showroom */}
-          {order.body?.referencePhoto && (
+          {(!isMultiItem && order.body?.referencePhoto) && (
             <div className="mt-2 pt-2 border-t border-gray-200/80 flex items-center gap-2">
               <img src={order.body.referencePhoto} alt="صورة المرجع" className="w-14 h-14 object-cover rounded border border-gray-300 shadow-sm bg-white" />
               <div className="text-xs font-cairo">
                 <p className="font-bold text-gray-800">📸 يوجد صورة مرجعية للتصميم مرفقة في الطلب</p>
                 <p className="text-gray-500 text-[11px]">تظهر الصورة مطبوعة على نسختي المعرض والمصنع</p>
+              </div>
+            </div>
+          )}
+          {isMultiItem && order.items.some(item => item.body?.referencePhoto) && (
+            <div className="mt-2 pt-2 border-t border-gray-200/80 flex items-center gap-2 flex-wrap">
+              {order.items.map((item, idx) => item.body?.referencePhoto && (
+                <img key={idx} src={item.body.referencePhoto} alt={`مرجع ${idx}`} className="w-14 h-14 object-cover rounded border border-gray-300 shadow-sm bg-white" />
+              ))}
+              <div className="text-xs font-cairo">
+                <p className="font-bold text-gray-800">📸 يوجد صور مرجعية للتصاميم مرفقة في هذا الطلب</p>
               </div>
             </div>
           )}
@@ -686,7 +725,10 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
     // 2. Category filter
     if (categoryFilter !== 'all') {
-      result = result.filter(o => o.orderType === categoryFilter);
+      result = result.filter(o => 
+        o.orderType === categoryFilter || 
+        (Array.isArray(o.items) && o.items.some(i => i.orderType === categoryFilter))
+      );
     }
 
     // 3. Production status filter

@@ -4,7 +4,9 @@ import TextareaField from '../ui/TextareaField';
 import {
   CHOCOLATE_TYPES,
   CHOCOLATE_NAMES,
+  CHOCOLATE_FILLING_MAP,
   CHOCOLATE_UNIT_MAP,
+  CHOCOLATE_FILLING_UNIT_MAP,
   DEFAULT_CHOCOLATE_UNIT,
 } from '../../constants/chocolateOrderFields';
 
@@ -15,11 +17,16 @@ import {
  *   - نوع الشوكولا: added بلجيكي and وطني options (via updated constant)
  *   - "نوع الحشو" → "اسم الشوكولا" (label rename; field id 'fillingType' preserved)
  *   - "طريقة التغليف" field label → "لون الورق" (field id 'wrappingMethod' preserved)
- *   - الكمية: conditional unit label derived from selected نوع الشوكولا
+ *   - الكمية: conditional unit label derived from selected نوع الشوكولا and اسم الشوكولا
  */
 export default function ChocolateOrderBody({ data, onChange }) {
-  // Derive unit label from selected chocolate type
-  const quantityUnit = CHOCOLATE_UNIT_MAP[data.chocolateType] || DEFAULT_CHOCOLATE_UNIT;
+  // Derive unit label from selected chocolate filling (priority) or type
+  const quantityUnit = CHOCOLATE_FILLING_UNIT_MAP[data.fillingType] || CHOCOLATE_UNIT_MAP[data.chocolateType] || DEFAULT_CHOCOLATE_UNIT;
+
+  // Dynamically load options based on selected type, fallback to all names
+  const fillingOptions = data.chocolateType && CHOCOLATE_FILLING_MAP[data.chocolateType]
+    ? CHOCOLATE_FILLING_MAP[data.chocolateType]
+    : CHOCOLATE_NAMES;
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -50,7 +57,7 @@ export default function ChocolateOrderBody({ data, onChange }) {
       <SelectField
         label="اسم الشوكولا"
         id="fillingType"
-        options={CHOCOLATE_NAMES}
+        options={fillingOptions}
         value={data.fillingType || ''}
         onChange={(v) => onChange('fillingType', v)}
         withOther

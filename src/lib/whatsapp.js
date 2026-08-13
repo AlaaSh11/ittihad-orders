@@ -68,16 +68,15 @@ function buildBodySummary(orderType, body) {
     if (body.wrappingMethod)  lines.push(`طريقة اللف: ${body.wrappingMethod}`);
     if (body.wrappingColor)   lines.push(`لون التغليف: ${body.wrappingColor}`);
     if (body.flowerColor)     lines.push(`لون الوردة: ${body.flowerColor}`);
-    // basketCount is now a string[] from the multi-select
-    if (body.basketCount) {
-      const baskets = Array.isArray(body.basketCount)
-        ? body.basketCount.join('، ')
-        : body.basketCount;
-      lines.push(`عدد السلال/حواني: ${baskets}`);
-    }
+    if (body.basketCount)     lines.push(`عدد السلال: ${body.basketCount}`);
     if (body.tissueCount)       lines.push(`عدد المحارم: ${body.tissueCount}`);
-    if (body.napkinHolderCount) lines.push(`عدد الوايبس: ${body.napkinHolderCount}`); // was "عدد النوابيس"
-    // wrappingPaperColor removed from form — no longer included
+    if (body.napkinHolderCount) lines.push(`عدد الوايبس: ${body.napkinHolderCount}`);
+    if (body.chocolateType)     lines.push(`نوع الشوكولا: ${body.chocolateType}`);
+    if (body.chocolateFilling)  lines.push(`الحشوة: ${body.chocolateFilling}`);
+    if (body.chocolateQuantity) lines.push(`كمية الشوكولا: ${body.chocolateQuantity}`);
+    if (body.chocolateSource)   lines.push(`مصدر الشوكولا: ${body.chocolateSource}`);
+    if (body.trayCount)         lines.push(`عدد الصواني: ${body.trayCount}`);
+    if (body.wrappingPaperColor) lines.push(`لون ورق اللف: ${body.wrappingPaperColor}`);
     if (body.specifications)    lines.push(`المواصفات: ${body.specifications}`);
     if (body.notes)             lines.push(`ملاحظات: ${body.notes}`);
 
@@ -104,27 +103,42 @@ function buildBodySummary(orderType, body) {
  * @returns {string}  Complete wa.me URL ready to open in a new tab
  */
 export function buildWhatsAppUrl(order) {
-  const { id, header, orderType, body, footer } = order;
+  const { id, header, footer, items, orderType, body } = order;
 
   // Strip phone to digits only (wa.me requires no +, spaces, or dashes)
   const rawPhone = (header?.customerPhone ?? '').replace(/\D/g, '');
 
-  const orderTypeLabel = {
+  const getOrderTypeLabel = (type) => ({
     cake:      'طلب كيك',
     chocolate: 'طلب شوكولا',
     occasion:  'طلب مناسبة',
     simple:    'طلب بسيط',
-  }[orderType] ?? orderType;
-
-  const bodySummary = buildBodySummary(orderType, body);
+  }[type] ?? type);
 
   const lines = [
-    `🎂 *تأكيد طلبية — ${orderTypeLabel}*`,
+    `🛒 *تأكيد طلبية — إيصال موحد*`,
     '━━━━━━━━━━━━━━━━━',
     `📋 رقم الطلبية: ${id}`,
     `👤 اسم الزبون: ${header?.customerName || '—'}`,
-    bodySummary,
     '━━━━━━━━━━━━━━━━━',
+  ];
+
+  // If new cart architecture (items array)
+  if (Array.isArray(items) && items.length > 0) {
+    items.forEach((item, index) => {
+      lines.push(`📦 الصنف ${index + 1}: *${getOrderTypeLabel(item.orderType)}*`);
+      lines.push(buildBodySummary(item.orderType, item.body));
+      lines.push('─────────────────');
+    });
+  } 
+  // Legacy backward-compatibility (single item)
+  else if (orderType && body) {
+    lines.push(`📦 صنف: *${getOrderTypeLabel(orderType)}*`);
+    lines.push(buildBodySummary(orderType, body));
+    lines.push('─────────────────');
+  }
+
+  lines.push(
     `📅 تاريخ التسليم: ${formatDate(header?.deliveryDate)}`,
     `🕐 الوقت: ${header?.deliveryTime || '—'}`,
     `📍 التسليم: ${header?.deliveryMethod || '—'}`,
@@ -133,8 +147,8 @@ export function buildWhatsAppUrl(order) {
     footer?.depositPaid ? `💵 عربون مطلوب (يُدفع للصندوق): $${footer?.depositAmount || '0'}` : null,
     footer?.depositPaid ? `📋 المتبقي عند تسليم الطلبية: $${footer?.remaining || '0'}` : null,
     '━━━━━━━━━━━━━━━━━',
-    'شكراً لطلبكم! 🙏',
-  ];
+    'شكراً لطلبكم! 🙏'
+  );
 
   const message = lines.filter(Boolean).join('\n');
   const encoded = encodeURIComponent(message);

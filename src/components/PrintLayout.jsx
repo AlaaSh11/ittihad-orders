@@ -324,8 +324,7 @@ const ORDER_TYPE_LABELS = {
 // ── Single print page ────────────────────────────────────────────────────────
 
 function PrintPage({ order, variant }) {
-  const { id, header, orderType, body, footer } = order;
-  const PrintBody = PRINT_BODY_MAP[orderType] || PrintCakeBody;
+  const { id, header, footer, items, orderType, body } = order;
   const isFactory = variant === 'factory';
 
   return (
@@ -360,11 +359,26 @@ function PrintPage({ order, variant }) {
       {/* Divider */}
       <div style={{ borderTop: '0.5px solid #ccc', marginBottom: '1.5mm' }} />
 
-      {/* Order type label */}
-      <div className="pf-section-title">{ORDER_TYPE_LABELS[orderType]}</div>
-
-      {/* Body */}
-      <PrintBody body={body} />
+      {/* Body / Cart Items */}
+      {Array.isArray(items) && items.length > 0 ? (
+        items.map((item, idx) => {
+          const ItemBody = PRINT_BODY_MAP[item.orderType] || PrintCakeBody;
+          return (
+            <div key={idx} style={{ marginBottom: '1.5mm', paddingBottom: '1.5mm', borderBottom: idx < items.length - 1 ? '1px dashed #ccc' : 'none' }}>
+              <div className="pf-section-title">صنف {idx + 1}: {ORDER_TYPE_LABELS[item.orderType]}</div>
+              <ItemBody body={item.body} />
+            </div>
+          );
+        })
+      ) : (
+        <>
+          <div className="pf-section-title">{ORDER_TYPE_LABELS[orderType]}</div>
+          {(() => {
+            const SingleBody = PRINT_BODY_MAP[orderType] || PrintCakeBody;
+            return <SingleBody body={body} />;
+          })()}
+        </>
+      )}
 
       {/* Footer */}
       {isFactory

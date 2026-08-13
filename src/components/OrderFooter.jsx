@@ -12,7 +12,7 @@ import CheckboxField from './ui/CheckboxField';
  *             showroom → normal fields with values
  *             factory  → blank bordered box same height, no labels/values (sketch space)
  */
-export default function OrderFooter({ data, onChange, variant = 'showroom' }) {
+export default function OrderFooter({ data, onChange, variant = 'showroom', priceReadOnly = false, priceReadOnlyNote = null }) {
   // Auto-calculate remaining = price - depositAmount when both are present
   useEffect(() => {
     const price = parseFloat(data.price) || 0;
@@ -44,14 +44,29 @@ export default function OrderFooter({ data, onChange, variant = 'showroom' }) {
     <div className="mt-3 pt-2 border-t border-gray-200">
       <div className="grid items-end gap-3" style={{ gridTemplateColumns: '1fr auto 1fr' }}>
         {/* السعر الإجمالي */}
-        <TextField
-          label="السعر الإجمالي"
-          id="price"
-          type="text"
-          dir="ltr"
-          value={data.price || ''}
-          onChange={(v) => onChange('price', v)}
-        />
+        {priceReadOnly ? (
+          <div className="flex flex-col gap-0.5">
+            <label className="text-xs font-bold text-[#1a1a2e] text-center font-cairo">السعر الإجمالي</label>
+            <div
+              dir="ltr"
+              className="w-full bg-emerald-50 border-2 border-emerald-400 rounded px-2 py-1.5 text-sm font-bold font-cairo text-emerald-800 text-center select-none"
+            >
+              {Number(data.price || 0).toLocaleString()}
+            </div>
+            {priceReadOnlyNote && (
+              <span className="text-[10px] text-center text-emerald-600 font-cairo">✅ {priceReadOnlyNote}</span>
+            )}
+          </div>
+        ) : (
+          <TextField
+            label="السعر الإجمالي"
+            id="price"
+            type="text"
+            dir="ltr"
+            value={data.price || ''}
+            onChange={(v) => onChange('price', v)}
+          />
+        )}
 
         {/* يُطلب عربون — checkbox + deposit amount */}
         <div className="flex flex-col items-center gap-1 pb-1">
