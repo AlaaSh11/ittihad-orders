@@ -15,7 +15,7 @@ const ORDER_TYPES = [
  */
 export default function OrderTypeSelector({ value, onChange }) {
   return (
-    <div className="flex rounded-lg overflow-hidden border-2 border-[#e2495c] mb-3 print:hidden">
+    <div className="flex rounded-lg overflow-hidden border-2 border-[#e2495c] mb-1.5 print:hidden">
       {ORDER_TYPES.map((type) => (
         <button
           key={type.id}

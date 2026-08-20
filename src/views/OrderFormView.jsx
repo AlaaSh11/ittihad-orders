@@ -118,26 +118,84 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     setIsSaved(false);
   }, []);
 
-  const [draftPriceLBP, setDraftPriceLBP] = useState('');
-  const [draftPriceUSD, setDraftPriceUSD] = useState('');
+  const [draftPrice, setDraftPrice] = useState('');
+  const [draftCurrency, setDraftCurrency] = useState('USD');
+  const [editingItemId, setEditingItemId] = useState(null); // ID of item being edited
 
   const handleDraftTypeChange = (type) => {
     setDraftType(type);
     setDraftBody(makeEmptyBody());
   };
 
-  const handleAddToCart = () => {
-    setCartItems(prev => [...prev, { id: crypto.randomUUID(), orderType: draftType, body: { ...draftBody }, priceLBP: draftPriceLBP, priceUSD: draftPriceUSD }]);
+  // Load an existing cart item into the draft form for editing
+  const handleEditItem = (item) => {
+    setEditingItemId(item.id);
+    setDraftType(item.orderType);
+    setDraftBody({ ...item.body });
+    
+    if (item.priceLBP && !item.priceUSD) {
+      setDraftPrice(item.priceLBP);
+      setDraftCurrency('LBP');
+    } else if (item.priceUSD && !item.priceLBP) {
+      setDraftPrice(item.priceUSD);
+      setDraftCurrency('USD');
+    } else if (item.priceUSD || item.priceLBP) {
+      // Fallback if both exist
+      setDraftPrice(item.priceUSD || item.priceLBP);
+      setDraftCurrency(item.priceUSD ? 'USD' : 'LBP');
+    } else {
+      setDraftPrice('');
+      setDraftCurrency('USD');
+    }
+    
+    // Scroll down to the form
+    setTimeout(() => document.getElementById('draftPriceInput')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+  };
+
+  // Cancel editing — clear draft without saving
+  const handleCancelEdit = () => {
+    setEditingItemId(null);
     setDraftType('cake');
     setDraftBody(makeEmptyBody());
-    setDraftPriceLBP('');
-    setDraftPriceUSD('');
+    setDraftPrice('');
+    setDraftCurrency('USD');
+  };
+
+  // Save edits to an existing cart item
+  const handleSaveEdit = () => {
+    const finalPriceLBP = draftCurrency === 'LBP' ? draftPrice : '';
+    const finalPriceUSD = draftCurrency === 'USD' ? draftPrice : '';
+
+    setCartItems(prev => prev.map(item =>
+      item.id === editingItemId
+        ? { ...item, orderType: draftType, body: { ...draftBody }, priceLBP: finalPriceLBP, priceUSD: finalPriceUSD }
+        : item
+    ));
+    setEditingItemId(null);
+    setDraftType('cake');
+    setDraftBody(makeEmptyBody());
+    setDraftPrice('');
+    setDraftCurrency('USD');
+    setSaveError('');
+    setIsSaved(false);
+  };
+
+  const handleAddToCart = () => {
+    const finalPriceLBP = draftCurrency === 'LBP' ? draftPrice : '';
+    const finalPriceUSD = draftCurrency === 'USD' ? draftPrice : '';
+
+    setCartItems(prev => [...prev, { id: crypto.randomUUID(), orderType: draftType, body: { ...draftBody }, priceLBP: finalPriceLBP, priceUSD: finalPriceUSD }]);
+    setDraftType('cake');
+    setDraftBody(makeEmptyBody());
+    setDraftPrice('');
+    setDraftCurrency('USD');
     setSaveError('');
     setIsSaved(false);
   };
 
   const handleRemoveItem = (id) => {
     setCartItems(prev => prev.filter(item => item.id !== id));
+    if (editingItemId === id) handleCancelEdit();
     setIsSaved(false);
   };
 
@@ -341,7 +399,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           {step === 1 && (
             <div className="animate-fadeIn">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">الخطوة 1: بيانات الزبون وموعد التسليم</h2>
+                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">1. بيانات الزبون وموعد التسليم</h2>
                 <div className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg border border-indigo-200" dir="ltr" style={{ fontFamily: "'Courier New', monospace" }}>{orderId}</div>
               </div>
               <OrderHeader
@@ -365,7 +423,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                   }}
                   className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-6 rounded-lg shadow font-cairo active:scale-[0.97]"
                 >
-                  متابعة لإضافة الأصناف ❯
+                  التالي ❯
                 </button>
               </div>
               {saveError && <p className="text-[#e2495c] text-xs font-bold text-left mt-2 font-cairo">{saveError}</p>}
@@ -376,18 +434,23 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           {step === 2 && (
             <div className="animate-fadeIn">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">الخطوة 2: بناء الطلبية (سلة الطلبات)</h2>
+                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">2. سلة الطلبات</h2>
                 <button onClick={() => setStep(1)} className="text-xs text-gray-500 underline font-cairo">تعديل بيانات الزبون</button>
               </div>
 
               {/* Cart List */}
               {cartItems.length > 0 && (
                 <div className="mb-6 bg-slate-50 border border-slate-200 rounded-xl p-3 shadow-inner">
-                  <h3 className="text-sm font-bold text-slate-800 mb-2 font-cairo">الأصناف المضافة ({cartItems.length}):</h3>
+                  <h3 className="text-sm font-bold text-slate-800 mb-2 font-cairo">الأصناف ({cartItems.length}):</h3>
                   <div className="flex flex-col gap-2">
                     {cartItems.map((item, idx) => (
-                      <div key={item.id} className="flex justify-between items-center bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
-                        <div className="flex items-center gap-2">
+                      <div
+                        key={item.id}
+                        className={`flex justify-between items-center bg-white border p-2.5 rounded-lg shadow-sm transition-all ${
+                          editingItemId === item.id ? 'border-indigo-400 bg-indigo-50' : 'border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
                           <span className="bg-indigo-100 text-indigo-800 border border-indigo-200 px-2.5 py-0.5 rounded text-xs font-bold font-cairo">{ORDER_TYPE_LABELS[item.orderType]}</span>
                           <span className="text-xs text-gray-500">صنف {idx + 1}</span>
                           {item.priceLBP && (
@@ -400,8 +463,21 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                               ${Number(item.priceUSD).toLocaleString()} USD
                             </span>
                           )}
+                          {editingItemId === item.id && (
+                            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-100 px-2 py-0.5 rounded-full font-cairo animate-pulse">↓ قيد التعديل</span>
+                          )}
                         </div>
-                        <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded text-xs font-bold font-cairo">❌ إزالة</button>
+                        <div className="flex items-center gap-1.5">
+                          {editingItemId !== item.id && (
+                            <button
+                              onClick={() => handleEditItem(item)}
+                              className="text-indigo-600 hover:bg-indigo-50 border border-indigo-200 p-1.5 rounded text-xs font-bold font-cairo"
+                            >
+                              ✏️ تعديل
+                            </button>
+                          )}
+                          <button onClick={() => handleRemoveItem(item.id)} className="text-red-500 hover:bg-red-50 p-1.5 rounded text-xs font-bold font-cairo">❌</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -421,64 +497,88 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                     </div>
                   )}
                   <div className="mt-3 text-left">
-                    <button onClick={() => setStep(3)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-5 rounded-lg shadow font-cairo text-sm">متابعة للدفع ❯</button>
+                    <button onClick={() => setStep(3)} className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-5 rounded-lg shadow font-cairo text-sm">التالي ❯</button>
                   </div>
                 </div>
               )}
 
-              {/* Add New Item Form */}
-              <div className="border-t-2 border-dashed border-gray-200 pt-4 mt-2">
-                <h3 className="text-sm font-bold text-indigo-700 mb-3 font-cairo">➕ إضافة صنف جديد للطلبية:</h3>
+              {/* Add New Item Form / Edit Item Form */}
+              <div className={`border-t-2 pt-4 mt-2 ${
+                editingItemId ? 'border-indigo-400 bg-indigo-50/40 rounded-xl p-4' : 'border-dashed border-gray-200'
+              }`}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className={`text-sm font-bold font-cairo ${
+                    editingItemId ? 'text-indigo-700' : 'text-indigo-700'
+                  }`}>
+                    {editingItemId ? 'تعديل الصنف:' : 'إضافة صنف:'}
+                  </h3>
+                  {editingItemId && (
+                    <button
+                      onClick={handleCancelEdit}
+                      className="text-xs font-bold text-gray-500 border border-gray-300 rounded px-2 py-1 hover:bg-gray-100 font-cairo"
+                    >
+                      ✕ إلغاء
+                    </button>
+                  )}
+                </div>
                 <OrderTypeSelector value={draftType} onChange={handleDraftTypeChange} />
                 <BodyComponent data={draftBody} onChange={handleDraftBodyChange} />
 
-                {/* Per-item price — dual currency */}
-                <div className="mt-4">
+                {/* Per-item price — Single currency toggle */}
+                <div className="mt-4 max-w-sm mx-auto">
                   <label className="text-xs font-bold text-[#1a1a2e] font-cairo block text-center mb-1.5">
-                    سعر هذا الصنف <span className="text-[10px] font-normal text-gray-400">(اختياري — يُحتسب في المجموع)</span>
+                    سعر الصنف <span className="text-[10px] font-normal text-gray-400">(اختياري)</span>
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* LBP */}
-                    <div className="relative">
-                      <input
-                        id="draftPriceLBP"
-                        type="number"
-                        dir="ltr"
-                        min="0"
-                        step="any"
-                        value={draftPriceLBP}
-                        onChange={(e) => setDraftPriceLBP(e.target.value)}
-                        placeholder="0"
-                        className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded pl-2 pr-12 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-[#e2495c] pointer-events-none">LBP</span>
-                    </div>
-                    {/* USD */}
-                    <div className="relative">
-                      <input
-                        id="draftPriceUSD"
-                        type="number"
-                        dir="ltr"
-                        min="0"
-                        step="any"
-                        value={draftPriceUSD}
-                        onChange={(e) => setDraftPriceUSD(e.target.value)}
-                        placeholder="0"
-                        className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded pl-2 pr-12 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] font-bold text-emerald-600 pointer-events-none">USD</span>
-                    </div>
+                  <div className="flex bg-[#eceafa] border-2 border-[#e2495c] rounded overflow-hidden focus-within:border-[#b01c2e] focus-within:ring-1 focus-within:ring-[#e2495c]/30 transition-colors">
+                    <select
+                      value={draftCurrency}
+                      onChange={(e) => setDraftCurrency(e.target.value)}
+                      className="bg-[#fcf8f9] border-none outline-none px-2 py-1.5 text-sm font-bold text-center cursor-pointer font-cairo text-[#e2495c] focus:ring-0"
+                      dir="ltr"
+                    >
+                      <option value="USD">USD $</option>
+                      <option value="LBP">LBP</option>
+                    </select>
+                    <div className="w-0.5 bg-[#e2495c]/20 my-1"></div>
+                    <input
+                      id="draftPriceInput"
+                      type="number"
+                      dir="ltr"
+                      min="0"
+                      step="any"
+                      value={draftPrice}
+                      onChange={(e) => setDraftPrice(e.target.value)}
+                      placeholder="0"
+                      className="bg-transparent border-none w-full px-3 py-1.5 text-sm font-bold font-cairo text-[#222] focus:outline-none focus:ring-0"
+                    />
                   </div>
                 </div>
 
 
-                <div className="mt-4 flex justify-center">
-                  <button
-                    onClick={handleAddToCart}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-8 rounded-lg shadow font-cairo active:scale-[0.97]"
-                  >
-                    ➕ أضف {ORDER_TYPE_LABELS[draftType]} إلى الطلبية
-                  </button>
+                <div className="mt-4 flex justify-center gap-3">
+                  {editingItemId ? (
+                    <>
+                      <button
+                        onClick={handleSaveEdit}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-8 rounded-lg shadow font-cairo active:scale-[0.97]"
+                      >
+                        حفظ التعديلات
+                      </button>
+                      <button
+                        onClick={handleCancelEdit}
+                        className="border border-gray-300 text-gray-600 hover:bg-gray-100 font-bold py-2.5 px-4 rounded-lg font-cairo active:scale-[0.97] text-sm"
+                      >
+                        إلغاء
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleAddToCart}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 px-8 rounded-lg shadow font-cairo active:scale-[0.97]"
+                    >
+                      ➕ إضافة للسلة
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -488,7 +588,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           {step === 3 && (
             <div className="animate-fadeIn">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">الخطوة 3: الدفع والحفظ</h2>
+                <h2 className="text-lg font-extrabold text-[#1a1a2e] font-cairo">3. الدفع والحفظ</h2>
                 <button onClick={() => setStep(2)} className="text-xs text-gray-500 underline font-cairo">إضافة أصناف أخرى</button>
               </div>
 
@@ -517,7 +617,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                                 : null
                               }
                               {!item.priceLBP && !item.priceUSD && (
-                                <span className="text-[10px] text-gray-400 font-cairo">لا يوجد سعر</span>
+                                <span className="text-[10px] text-gray-400 font-cairo">بلا تسعير</span>
                               )}
                             </div>
                           </div>

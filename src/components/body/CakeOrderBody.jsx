@@ -196,10 +196,10 @@ export default function CakeOrderBody({ data, onChange }) {
         onChange={(ids) => onChange('addons', ids)}
       />
 
-      {/* ── Reference Photo Attachment (لتوجيه المصنع) ── */}
+      {/* ── Reference Photo Attachment ── */}
       <div className="col-span-2 mt-2 bg-purple-50/60 border border-purple-200 rounded-xl p-3">
         <label className="text-xs font-bold text-[#1a1a2e] block mb-2 text-center font-cairo">
-          📸 صورة التصميم المرجعية للمصنع (اختياري)
+          صورة مرجعية (اختياري)
         </label>
         <div className="flex flex-col sm:flex-row items-center gap-3 justify-center">
           {data.referencePhoto ? (
@@ -207,8 +207,7 @@ export default function CakeOrderBody({ data, onChange }) {
               <div className="flex items-center gap-2.5">
                 <img src={data.referencePhoto} alt="صورة المرجع" className="w-16 h-16 object-cover rounded border border-gray-200 shadow-inner" />
                 <div className="flex flex-col font-cairo text-right">
-                  <span className="text-xs font-bold text-green-700">✓ تم إرفاق صورة التصميم</span>
-                  <span className="text-[10px] text-gray-500">ستظهر بالطباعة ولطاقم المصنع</span>
+                  <span className="text-xs font-bold text-green-700">✓ تم الإرفاق</span>
                 </div>
               </div>
               <button
@@ -216,13 +215,13 @@ export default function CakeOrderBody({ data, onChange }) {
                 onClick={() => onChange('referencePhoto', null)}
                 className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1.5 rounded-lg text-xs hover:bg-red-100 transition-colors font-bold font-cairo shrink-0"
               >
-                ❌ حذف
+                حذف
               </button>
             </div>
           ) : (
             <div className="w-full flex items-center justify-center">
               <label className="cursor-pointer bg-white hover:bg-purple-50 text-purple-800 border border-purple-300 text-xs font-bold px-4 py-2.5 rounded-lg transition-all font-cairo flex items-center justify-center gap-2 w-full text-center shadow-sm active:scale-[0.98]">
-                <span>➕ إرفاق صورة من الحاتف أو الكمبيوتر (لتطبيق التصميم)</span>
+                <span>➕ إضافة صورة</span>
                 <input
                   type="file"
                   accept="image/*"

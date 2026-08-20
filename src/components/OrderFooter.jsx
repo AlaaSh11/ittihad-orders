@@ -71,7 +71,7 @@ export default function OrderFooter({ data, onChange, variant = 'showroom', pric
         {/* يُطلب عربون — checkbox + deposit amount */}
         <div className="flex flex-col items-center gap-1 pb-1">
           <CheckboxField
-            label="يُطلب عربون مقدم"
+            label="عربون"
             id="depositPaid"
             checked={data.depositPaid || false}
             onChange={(v) => onChange('depositPaid', v)}
@@ -82,15 +82,15 @@ export default function OrderFooter({ data, onChange, variant = 'showroom', pric
               dir="ltr"
               value={data.depositAmount || ''}
               onChange={(e) => onChange('depositAmount', e.target.value)}
-              placeholder="قيمة العربون"
+              placeholder="العربون"
               className="w-24 bg-[#eceafa] border-2 border-indigo-600 rounded px-2 py-1 text-xs font-bold font-cairo text-center text-indigo-950 focus:outline-none focus:ring-2 focus:ring-indigo-300"
             />
           )}
         </div>
 
-        {/* المتبقي للكاشير عند التسليم */}
+        {/* المتبقي للكاشير */}
         <TextField
-          label="المتبقي للكاشير عند التسليم"
+          label="المتبقي للكاشير"
           id="remaining"
           type="text"
           dir="ltr"
@@ -106,11 +106,11 @@ export default function OrderFooter({ data, onChange, variant = 'showroom', pric
           <p className="font-semibold leading-relaxed">
             {remainingVal > 0 ? (
               <>
-                تم تحديد عربون بقيمة <span className="font-bold underline">${depositVal}</span>. يرجى توجيه الزبون إلى <strong>الصندوق (الكاشير)</strong> لدفع العربون وتأكيد الطلبية. المتبقي عند التسليم: <span className="font-bold underline">${remainingVal}</span>.
+                عربون: <span className="font-bold underline">{depositVal}</span> | المتبقي عند التسليم: <span className="font-bold underline">{remainingVal}</span>. (يرجى الدفع عند الكاشير)
               </>
             ) : (
               <>
-                قيمة العربون (<span className="font-bold underline">${depositVal}</span>) تغطي كامل السعر الإجمالي للطلبية! الكاشير سيُحصل كامل المبلغ دفعة واحدة الآن.
+                العربون يغطي كامل السعر. سيتم تحصيل <span className="font-bold underline">{depositVal}</span> عند الكاشير.
               </>
             )}
           </p>

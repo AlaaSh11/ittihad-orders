@@ -113,10 +113,11 @@ export const SHAPE_SERVES_MAP = {
 // To add a new add-on, append an entry here — no component changes needed.
 // ─────────────────────────────────────────────────────────────────────────────
 export const CAKE_ADDONS = [
-  { id: 'crown_gold',  label: 'تاج ذهبي',  price: 0 },
-  { id: 'crown_silver',label: 'تاج فضي',   price: 0 },
-  { id: 'sword_gold',  label: 'سيف ذهبي',  price: 0 },
-  { id: 'sword_silver',label: 'سيف فضي',   price: 0 },
+  { id: 'crown_gold',    label: 'تاج ذهبي',    price: 0 },
+  { id: 'crown_silver',  label: 'تاج فضي',     price: 0 },
+  { id: 'glitter_gold',  label: 'جليتر ذهبي',  price: 0 },
+  { id: 'glitter_silver',label: 'غليتر فضي',   price: 0 },
+  { id: 'sword',         label: 'سيف',         price: 0 },
 ];
 // Note: prices above are set to 0 (TBD). Fill in real prices to enable
 // automatic price contribution from the AddonsSelector component.
