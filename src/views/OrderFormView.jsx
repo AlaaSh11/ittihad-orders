@@ -118,67 +118,69 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     setIsSaved(false);
   }, []);
 
-  const [draftPrice, setDraftPrice] = useState('');
-  const [draftCurrency, setDraftCurrency] = useState('USD');
+  const [draftPriceUSD, setDraftPriceUSD] = useState('');
+  const [draftPriceLBP, setDraftPriceLBP] = useState('');
   const [priceError, setPriceError] = useState('');
   const [editingItemId, setEditingItemId] = useState(null); // ID of item being edited
+
+  const EXCHANGE_RATE = 90000;
 
   const handleDraftTypeChange = (type) => {
     setDraftType(type);
     setDraftBody(makeEmptyBody());
   };
 
-  const validatePrice = (priceStr, currency) => {
-    if (!priceStr) return '';
-    const raw = parseFloat(String(priceStr).replace(/,/g, ''));
-    if (isNaN(raw)) return '';
-    if (currency === 'LBP' && raw < 100000) return '⚠️ السعر بالليرة يجب أن يكون 100,000 أو أكثر';
-    if (currency === 'USD' && raw > 10000) return '⚠️ السعر بالدولار يجب ألا يتجاوز 10,000';
+  const validatePrices = (usdVal, lbpVal) => {
+    if (!usdVal && !lbpVal) return '';
+    const rawUSD = parseFloat(usdVal) || 0;
+    const rawLBP = parseFloat(String(lbpVal).replace(/,/g, '')) || 0;
+    
+    if (rawLBP > 0 && rawLBP < 100000) return '⚠️ السعر بالليرة يجب أن يكون 100,000 أو أكثر';
+    if (rawUSD > 10000) return '⚠️ السعر بالدولار يجب ألا يتجاوز 10,000';
     return '';
   };
 
-  const handleCurrencyChange = (e) => {
-    const newCurr = e.target.value;
-    setDraftCurrency(newCurr);
-    let raw = String(draftPrice).replace(/,/g, '');
-    if (!raw) {
+  const handlePriceUSDChange = (e) => {
+    let val = e.target.value.replace(/[^\d.]/g, '');
+    const parts = val.split('.');
+    if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
+    
+    setDraftPriceUSD(val);
+    
+    if (!val || val === '.') {
+      setDraftPriceLBP('');
       setPriceError('');
       return;
     }
     
-    let formatted = raw;
-    if (newCurr === 'LBP') {
-      raw = raw.split('.')[0];
-      const num = parseInt(raw, 10);
-      if (!isNaN(num)) formatted = num.toLocaleString('en-US');
-      setDraftPrice(formatted);
-    } else {
-      setDraftPrice(formatted);
+    const usdNum = parseFloat(val);
+    if (!isNaN(usdNum)) {
+      const lbpEquivalent = Math.round(usdNum * EXCHANGE_RATE);
+      const formattedLBP = lbpEquivalent.toLocaleString('en-US');
+      setDraftPriceLBP(formattedLBP);
+      setPriceError(validatePrices(val, formattedLBP));
     }
-    
-    setPriceError(validatePrice(formatted, newCurr));
   };
 
-  const handlePriceChange = (e) => {
-    let val = e.target.value;
-    if (draftCurrency === 'LBP') {
-      val = val.replace(/[^\d]/g, '');
-      if (!val) {
-        setDraftPrice('');
-        setPriceError('');
-        return;
-      }
-      const num = parseInt(val, 10);
-      const formatted = num.toLocaleString('en-US');
-      setDraftPrice(formatted);
-      setPriceError(validatePrice(formatted, 'LBP'));
-    } else {
-      val = val.replace(/[^\d.]/g, '');
-      const parts = val.split('.');
-      if (parts.length > 2) val = parts[0] + '.' + parts.slice(1).join('');
-      setDraftPrice(val);
-      setPriceError(validatePrice(val, 'USD'));
+  const handlePriceLBPChange = (e) => {
+    let val = e.target.value.replace(/[^\d]/g, '');
+    
+    if (!val) {
+      setDraftPriceLBP('');
+      setDraftPriceUSD('');
+      setPriceError('');
+      return;
     }
+    
+    const lbpNum = parseInt(val, 10);
+    const formattedLBP = lbpNum.toLocaleString('en-US');
+    setDraftPriceLBP(formattedLBP);
+    
+    const usdEquivalent = lbpNum / EXCHANGE_RATE;
+    const formattedUSD = usdEquivalent % 1 === 0 ? String(usdEquivalent) : usdEquivalent.toFixed(2);
+    setDraftPriceUSD(formattedUSD);
+    
+    setPriceError(validatePrices(formattedUSD, formattedLBP));
   };
 
   // Load an existing cart item into the draft form for editing
@@ -188,39 +190,27 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     setDraftBody({ ...item.body });
     setPriceError('');
     
-    if (item.priceLBP && !item.priceUSD) {
-      setDraftPrice(Number(item.priceLBP).toLocaleString('en-US'));
-      setDraftCurrency('LBP');
-    } else if (item.priceUSD && !item.priceLBP) {
-      setDraftPrice(item.priceUSD);
-      setDraftCurrency('USD');
-    } else if (item.priceUSD || item.priceLBP) {
-      setDraftPrice(item.priceUSD ? item.priceUSD : Number(item.priceLBP).toLocaleString('en-US'));
-      setDraftCurrency(item.priceUSD ? 'USD' : 'LBP');
-    } else {
-      setDraftPrice('');
-      setDraftCurrency('USD');
-    }
+    setDraftPriceUSD(item.priceUSD || '');
+    setDraftPriceLBP(item.priceLBP ? Number(item.priceLBP).toLocaleString('en-US') : '');
     
-    setTimeout(() => document.getElementById('draftPriceInput')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
+    setTimeout(() => document.getElementById('draftPriceLBPInput')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100);
   };
 
   const handleCancelEdit = () => {
     setEditingItemId(null);
     setDraftType('cake');
     setDraftBody(makeEmptyBody());
-    setDraftPrice('');
-    setDraftCurrency('USD');
+    setDraftPriceUSD('');
+    setDraftPriceLBP('');
     setPriceError('');
   };
 
   const handleSaveEdit = () => {
-    const err = validatePrice(draftPrice, draftCurrency);
+    const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
 
-    const rawVal = draftPrice ? String(draftPrice).replace(/,/g, '') : '';
-    const finalPriceLBP = draftCurrency === 'LBP' ? rawVal : '';
-    const finalPriceUSD = draftCurrency === 'USD' ? rawVal : '';
+    const finalPriceLBP = draftPriceLBP ? String(draftPriceLBP).replace(/,/g, '') : '';
+    const finalPriceUSD = draftPriceUSD || '';
 
     setCartItems(prev => prev.map(item =>
       item.id === editingItemId
@@ -230,26 +220,25 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     setEditingItemId(null);
     setDraftType('cake');
     setDraftBody(makeEmptyBody());
-    setDraftPrice('');
-    setDraftCurrency('USD');
+    setDraftPriceUSD('');
+    setDraftPriceLBP('');
     setSaveError('');
     setPriceError('');
     setIsSaved(false);
   };
 
   const handleAddToCart = () => {
-    const err = validatePrice(draftPrice, draftCurrency);
+    const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
 
-    const rawVal = draftPrice ? String(draftPrice).replace(/,/g, '') : '';
-    const finalPriceLBP = draftCurrency === 'LBP' ? rawVal : '';
-    const finalPriceUSD = draftCurrency === 'USD' ? rawVal : '';
+    const finalPriceLBP = draftPriceLBP ? String(draftPriceLBP).replace(/,/g, '') : '';
+    const finalPriceUSD = draftPriceUSD || '';
 
     setCartItems(prev => [...prev, { id: crypto.randomUUID(), orderType: draftType, body: { ...draftBody }, priceLBP: finalPriceLBP, priceUSD: finalPriceUSD }]);
     setDraftType('cake');
     setDraftBody(makeEmptyBody());
-    setDraftPrice('');
-    setDraftCurrency('USD');
+    setDraftPriceUSD('');
+    setDraftPriceLBP('');
     setSaveError('');
     setPriceError('');
     setIsSaved(false);
@@ -382,22 +371,6 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   };
 
   const BodyComponent = BODY_COMPONENTS[draftType] || CakeOrderBody;
-
-  const getConvertedPrice = () => {
-    if (!draftPrice) return null;
-    const raw = parseFloat(String(draftPrice).replace(/,/g, ''));
-    if (isNaN(raw)) return null;
-    
-    const EXCHANGE_RATE = 90000;
-    if (draftCurrency === 'USD') {
-      const lbp = raw * EXCHANGE_RATE;
-      return `~ ${lbp.toLocaleString('en-US')} LBP`;
-    } else {
-      const usd = raw / EXCHANGE_RATE;
-      const formattedUsd = usd % 1 === 0 ? usd : usd.toFixed(2);
-      return `~ $${formattedUsd} USD`;
-    }
-  };
 
   return (
     <div className="min-h-screen bg-[#eaeaf2] print:bg-white" dir="rtl">
@@ -602,49 +575,51 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                 <OrderTypeSelector value={draftType} onChange={handleDraftTypeChange} />
                 <BodyComponent data={draftBody} onChange={handleDraftBodyChange} />
 
-                {/* Per-item price — Single currency toggle */}
+                {/* Per-item price — Two fields */}
                 <div className="mt-4 max-w-sm mx-auto">
                   <label className="text-xs font-bold text-[#1a1a2e] font-cairo block text-center mb-1.5">
                     سعر الصنف <span className="text-[10px] font-normal text-gray-400">(اختياري)</span>
                   </label>
-                  <div className={`flex bg-[#eceafa] border-2 rounded overflow-hidden focus-within:ring-1 transition-colors ${
-                    priceError 
-                      ? 'border-red-500 focus-within:border-red-600 focus-within:ring-red-500/30' 
-                      : 'border-[#e2495c] focus-within:border-[#b01c2e] focus-within:ring-[#e2495c]/30'
-                  }`}>
-                    <select
-                      value={draftCurrency}
-                      onChange={handleCurrencyChange}
-                      className={`border-none outline-none px-2 py-1.5 text-sm font-bold text-center cursor-pointer font-cairo focus:ring-0 ${
-                        priceError ? 'bg-red-50 text-red-600' : 'bg-[#fcf8f9] text-[#e2495c]'
-                      }`}
-                      dir="ltr"
-                    >
-                      <option value="USD">USD $</option>
-                      <option value="LBP">LBP</option>
-                    </select>
-                    <div className={`w-0.5 my-1 ${priceError ? 'bg-red-500/20' : 'bg-[#e2495c]/20'}`}></div>
-                    <input
-                      id="draftPriceInput"
-                      type="text"
-                      dir="ltr"
-                      value={draftPrice}
-                      onChange={handlePriceChange}
-                      placeholder="0"
-                      className={`bg-transparent border-none w-full px-3 py-1.5 text-sm font-bold font-cairo focus:outline-none focus:ring-0 ${
-                        priceError ? 'text-red-700' : 'text-[#222]'
-                      }`}
-                    />
+                  <div className="flex items-center gap-2">
+                    <div className={`flex-1 flex bg-[#eceafa] border-2 rounded overflow-hidden focus-within:ring-1 transition-colors ${
+                      priceError 
+                        ? 'border-red-500 focus-within:border-red-600 focus-within:ring-red-500/30' 
+                        : 'border-emerald-500 focus-within:border-emerald-600 focus-within:ring-emerald-500/30'
+                    }`}>
+                      <span className={`px-2 py-1.5 text-sm font-bold bg-[#fcf8f9] border-l ${priceError ? 'border-red-500/20 text-red-600' : 'border-emerald-500/20 text-emerald-700'}`}>$</span>
+                      <input
+                        id="draftPriceUSDInput"
+                        type="text"
+                        dir="ltr"
+                        value={draftPriceUSD}
+                        onChange={handlePriceUSDChange}
+                        placeholder="USD"
+                        className={`bg-transparent border-none w-full px-2 py-1.5 text-sm font-bold font-cairo focus:outline-none focus:ring-0 ${priceError ? 'text-red-700' : 'text-[#222]'}`}
+                      />
+                    </div>
+                    <span className="text-gray-400 font-bold">=</span>
+                    <div className={`flex-1 flex bg-[#eceafa] border-2 rounded overflow-hidden focus-within:ring-1 transition-colors ${
+                      priceError 
+                        ? 'border-red-500 focus-within:border-red-600 focus-within:ring-red-500/30' 
+                        : 'border-[#e2495c] focus-within:border-[#b01c2e] focus-within:ring-[#e2495c]/30'
+                    }`}>
+                      <input
+                        id="draftPriceLBPInput"
+                        type="text"
+                        dir="ltr"
+                        value={draftPriceLBP}
+                        onChange={handlePriceLBPChange}
+                        placeholder="LBP"
+                        className={`bg-transparent border-none w-full px-2 py-1.5 text-sm font-bold font-cairo focus:outline-none focus:ring-0 text-right ${priceError ? 'text-red-700' : 'text-[#222]'}`}
+                      />
+                      <span className={`px-2 py-1.5 text-xs font-bold bg-[#fcf8f9] border-r ${priceError ? 'border-red-500/20 text-red-600' : 'border-[#e2495c]/20 text-[#e2495c]'}`}>L.L</span>
+                    </div>
                   </div>
-                  {priceError ? (
+                  {priceError && (
                     <p className="text-red-600 text-[10px] font-bold font-cairo text-center mt-1.5 animate-fadeIn">
                       {priceError}
                     </p>
-                  ) : getConvertedPrice() ? (
-                    <p className="text-indigo-600 text-[11px] font-bold font-cairo text-center mt-1.5 animate-fadeIn" dir="ltr">
-                      {getConvertedPrice()}
-                    </p>
-                  ) : null}
+                  )}
                 </div>
                 <div className="mt-4 flex justify-center gap-3">
                   {editingItemId ? (
