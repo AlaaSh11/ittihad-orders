@@ -383,6 +383,22 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
 
   const BodyComponent = BODY_COMPONENTS[draftType] || CakeOrderBody;
 
+  const getConvertedPrice = () => {
+    if (!draftPrice) return null;
+    const raw = parseFloat(String(draftPrice).replace(/,/g, ''));
+    if (isNaN(raw)) return null;
+    
+    const EXCHANGE_RATE = 90000;
+    if (draftCurrency === 'USD') {
+      const lbp = raw * EXCHANGE_RATE;
+      return `~ ${lbp.toLocaleString('en-US')} LBP`;
+    } else {
+      const usd = raw / EXCHANGE_RATE;
+      const formattedUsd = usd % 1 === 0 ? usd : usd.toFixed(2);
+      return `~ $${formattedUsd} USD`;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#eaeaf2] print:bg-white" dir="rtl">
       <PrintLayout order={savedOrder} currentUser={currentUser} />
@@ -620,11 +636,15 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                       }`}
                     />
                   </div>
-                  {priceError && (
+                  {priceError ? (
                     <p className="text-red-600 text-[10px] font-bold font-cairo text-center mt-1.5 animate-fadeIn">
                       {priceError}
                     </p>
-                  )}
+                  ) : getConvertedPrice() ? (
+                    <p className="text-indigo-600 text-[11px] font-bold font-cairo text-center mt-1.5 animate-fadeIn" dir="ltr">
+                      {getConvertedPrice()}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="mt-4 flex justify-center gap-3">
                   {editingItemId ? (
