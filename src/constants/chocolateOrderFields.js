@@ -78,9 +78,43 @@ export const CHOCOLATE_NAMES = [
   ...CHOCOLATE_FILLING_MAP['وطني'],
 ];
 
-// طريقة التغليف wrapping methods (kept for backward-compat; label replaced on form)
-export const CHOCOLATE_WRAPPING_METHODS = [
-  'قلب سلوفان',
-  'لف',
-  'لف مكة',
+// لون ورق اللف - Paper wrapping colors
+export const CHOCOLATE_PAPER_COLORS = [
+  'PMM 1',
+  'MMC 1',
+  'MMC 2',
+  'MMC 5',
+  'MMC 9',
+  'MMC 12',
+  'MMC 13',
+  'MMC 14',
+  'MMC 18',
+  'MMC 19',
+  'MMC 21',
+  'MMC 24',
+  'MMC 27',
+  'MMC 28',
+  'MMC 30',
+  'MMC 34',
+  'MMC 35',
+  'MMC 36',
+  'MMC 15',
+  'MMC 31',
+  'MMC 29',
+  'MMC 6',
+  'MMC 10',
+  'Babies 9 - Princess Pink',
+  'Babies 9 - Princess Blue',
+  'Babies 8 - Magazine Pink',
+  'Babies 8 - Magazine Blue',
+  'Babies 7 - Pink',
+  'Babies 7 - Blue',
+  'Babies 6 - Pink',
+  'Babies 6 - Blue',
+  'Babies 3 - Pink',
+  'Babies 3 - Blue',
+  'Babies 2 - Pink',
+  'Babies 1 - Pink',
+  'Babies 2 - Blue',
+  'Babies 3 - Blue'
 ];

@@ -8,6 +8,7 @@ import {
   CHOCOLATE_UNIT_MAP,
   CHOCOLATE_FILLING_UNIT_MAP,
   DEFAULT_CHOCOLATE_UNIT,
+  CHOCOLATE_PAPER_COLORS,
 } from '../../constants/chocolateOrderFields';
 
 /**
@@ -42,11 +43,11 @@ export default function ChocolateOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
-      {/* لون الورق — was "طريقة التغليف"; label replaced, field id 'wrappingMethod' preserved */}
+      {/* لون ورق اللف — was "طريقة التغليف"; label replaced, field id 'wrappingMethod' preserved */}
       <SelectField
-        label="لون الورق"
+        label="لون ورق اللف"
         id="wrappingMethod"
-        options={['أبيض', 'ذهبي', 'فضي', 'أحمر', 'أسود', 'وردي', 'أزرق']}
+        options={CHOCOLATE_PAPER_COLORS}
         value={data.wrappingMethod || ''}
         onChange={(v) => onChange('wrappingMethod', v)}
         withOther
