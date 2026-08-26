@@ -41,7 +41,7 @@ export default function ChocolateOrderBody({ data, onChange }) {
       />
 
       {/* الكمية — unit label driven by نوع الشوكولا */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1 col-span-full">
         <label htmlFor="chocolateQuantity" className="text-xs font-bold text-[#1a1a2e] text-center">
           الكمية
           {quantityUnit && (
