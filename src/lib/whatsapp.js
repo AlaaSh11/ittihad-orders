@@ -81,16 +81,31 @@ function buildBodySummary(orderType, body) {
     if (body.notes)             lines.push(`ملاحظات: ${body.notes}`);
 
   } else if (orderType === 'simple') {
-    if (body.itemName)      lines.push(`اسم الصنف: ${body.itemName}`);
-    if (body.chocolateName) lines.push(`اسم الشوكولا: ${body.chocolateName}`);
-    if (body.pieces)        lines.push(`عدد الحبات: ${body.pieces}`); // was body.quantity
-    // Include computed weight if we can derive it
-    const pieces = parseInt(body.pieces, 10) || 0;
-    const ratio = CHOCOLATE_PIECES_PER_KILO[body.chocolateName];
-    if (pieces > 0 && ratio) {
-      lines.push(`الوزن بالكيلو: ${(pieces / ratio).toFixed(3)} كغ`);
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      body.items.forEach((item, index) => {
+        if (body.items.length > 1) {
+          lines.push(`🔸 طلب فرعي ${index + 1}:`);
+        }
+        if (item.itemName)      lines.push(`الصنف: ${item.itemName}`);
+        if (item.pieces)        lines.push(`حبة: ${item.pieces}`);
+        if (item.weight)        lines.push(`كيلو: ${item.weight}`);
+        if (item.notes)         lines.push(`ملاحظات: ${item.notes}`);
+        if (body.items.length > 1 && index < body.items.length - 1) {
+          lines.push(`- - - - - -`);
+        }
+      });
+    } else {
+      // Legacy simple orders
+      if (body.itemName)      lines.push(`اسم الصنف: ${body.itemName}`);
+      if (body.chocolateName) lines.push(`اسم الشوكولا: ${body.chocolateName}`);
+      if (body.pieces)        lines.push(`عدد الحبات: ${body.pieces}`);
+      const pieces = parseInt(body.pieces, 10) || 0;
+      const ratio = CHOCOLATE_PIECES_PER_KILO[body.chocolateName];
+      if (pieces > 0 && ratio) {
+        lines.push(`الوزن بالكيلو: ${(pieces / ratio).toFixed(3)} كغ`);
+      }
+      if (body.notes) lines.push(`ملاحظات: ${body.notes}`);
     }
-    if (body.notes) lines.push(`ملاحظات: ${body.notes}`);
   }
 
   return lines.join('\n');
@@ -109,10 +124,10 @@ export function buildWhatsAppUrl(order) {
   const rawPhone = (header?.customerPhone ?? '').replace(/\D/g, '');
 
   const getOrderTypeLabel = (type) => ({
-    cake:      'طلب كيك',
-    chocolate: 'طلب شوكولا',
-    occasion:  'طلب مناسبة',
-    simple:    'طلب بسيط',
+    cake:      'كيك',
+    chocolate: 'شوكولا',
+    occasion:  'مناسبة',
+    simple:    'طلبات متنوعة',
   }[type] ?? type);
 
   const lines = [
@@ -144,7 +159,6 @@ export function buildWhatsAppUrl(order) {
     `📍 التسليم: ${header?.deliveryMethod || '—'}`,
     header?.deliveryAddress ? `📍 عنوان التوصيل: ${header.deliveryAddress}` : null,
     `💰 السعر الإجمالي: $${footer?.price || '—'}`,
-    footer?.depositPaid ? `💵 عربون مطلوب (يُدفع للصندوق): $${footer?.depositAmount || '0'}` : null,
     footer?.depositPaid ? `📋 المتبقي عند تسليم الطلبية: $${footer?.remaining || '0'}` : null,
     '━━━━━━━━━━━━━━━━━',
     'شكراً لطلبكم! 🙏'

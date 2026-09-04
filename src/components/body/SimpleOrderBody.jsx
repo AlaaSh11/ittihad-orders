@@ -20,111 +20,98 @@ import { CHOCOLATE_PIECES_PER_KILO } from '../../constants/chocolateLookup';
  * To update ratios: edit src/constants/chocolateLookup.js only.
  */
 export default function SimpleOrderBody({ data, onChange }) {
-  const pieces = parseInt(data.pieces, 10) || 0;
-  const chocolateName = data.chocolateName || '';
+  // Backwards compatibility or initialize array
+  const items = Array.isArray(data.items) && data.items.length > 0
+    ? data.items
+    : [{ itemName: data.itemName || '', pieces: data.pieces || '', weight: data.weight || '', notes: data.notes || '' }];
 
-  // Lookup pieces-per-kilo ratio; undefined if not found
-  const ratio = CHOCOLATE_PIECES_PER_KILO[chocolateName];
+  const handleItemChange = (index, field, value) => {
+    const newItems = [...items];
+    newItems[index] = { ...newItems[index], [field]: value };
+    onChange('items', newItems);
+  };
 
-  // Auto-calculate weight (read-only display)
-  const weightDisplay =
-    pieces > 0 && ratio
-      ? (pieces / ratio).toFixed(3) + ' كغ'
-      : '—';
+  const handleAddItem = () => {
+    onChange('items', [...items, { itemName: '', pieces: '', weight: '', notes: '' }]);
+  };
 
-  const handleStepperChange = (delta) => {
-    const next = Math.max(1, pieces + delta);
-    onChange('pieces', String(next));
+  const handleRemoveItem = (index) => {
+    if (items.length <= 1) return;
+    const newItems = items.filter((_, i) => i !== index);
+    onChange('items', newItems);
   };
 
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-col gap-3">
+      {/* Dynamic Item Rows */}
+      {items.map((item, index) => (
+        <div key={index} className="flex flex-col gap-2 p-3 bg-white border border-gray-200 rounded-lg shadow-sm relative">
+          <div className="flex items-end gap-2">
+            <div className="grid grid-cols-4 gap-2 flex-1">
+              <div className="col-span-2">
+                <TextField
+                  label={index === 0 ? "الصنف" : undefined}
+                  id={`itemName-${index}`}
+                  value={item.itemName || ''}
+                  onChange={(v) => handleItemChange(index, 'itemName', v)}
+                />
+              </div>
+              <TextField
+                label={index === 0 ? "حبة" : undefined}
+                id={`pieces-${index}`}
+                type="number"
+                min="1"
+                dir="ltr"
+                value={item.pieces || ''}
+                onChange={(v) => handleItemChange(index, 'pieces', v)}
+              />
+              <TextField
+                label={index === 0 ? "كيلو" : undefined}
+                id={`weight-${index}`}
+                dir="ltr"
+                value={item.weight || ''}
+                onChange={(v) => handleItemChange(index, 'weight', v)}
+              />
+            </div>
+            
+            {/* Remove Button for extra rows */}
+            {items.length > 1 ? (
+              <button 
+                type="button"
+                onClick={() => handleRemoveItem(index)}
+                className="text-red-500 hover:text-red-700 bg-red-50 hover:bg-red-100 rounded px-2 py-1.5 font-bold mb-0.5 border border-transparent transition-colors"
+                title="حذف الصنف"
+              >
+                ✕
+              </button>
+            ) : (
+              <div className="w-8"></div> // Spacer
+            )}
+          </div>
 
-      {/* اسم الصنف */}
-      <div className="col-span-2">
-        <TextField
-          label="اسم الصنف"
-          id="itemName"
-          value={data.itemName || ''}
-          onChange={(v) => onChange('itemName', v)}
-        />
-      </div>
-
-      {/* اسم الشوكولا — dropdown linked to weight lookup */}
-      <div className="col-span-2">
-        <SelectField
-          label="اسم الشوكولا"
-          id="chocolateName"
-          options={CHOCOLATE_NAMES}
-          value={chocolateName}
-          onChange={(v) => {
-            onChange('chocolateName', v);
-            // Clear pieces on chocolate change so user re-enters intentionally
-            onChange('pieces', '1');
-          }}
-          withOther
-          placeholder="اختر نوع الشوكولا"
-        />
-      </div>
-
-      {/* عدد الحبات — numeric stepper */}
-      <div className="flex flex-col gap-1">
-        <label htmlFor="pieces" className="text-xs font-bold text-[#1a1a2e] text-center">
-          عدد الحبات
-        </label>
-        <div className="flex items-center border-2 border-[#e2495c] rounded overflow-hidden bg-[#eceafa]">
-          <button
-            type="button"
-            onClick={() => handleStepperChange(-1)}
-            className="px-3 py-1.5 text-[#e2495c] font-bold text-lg leading-none hover:bg-[#e2495c]/10 transition-colors active:scale-90 select-none"
-            aria-label="تقليل"
-          >
-            −
-          </button>
-          <input
-            id="pieces"
-            type="number"
-            min="1"
-            dir="ltr"
-            value={data.pieces || '1'}
-            onChange={(e) => onChange('pieces', e.target.value)}
-            className="flex-1 bg-transparent text-center text-sm font-cairo text-[#222] focus:outline-none py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-          />
-          <button
-            type="button"
-            onClick={() => handleStepperChange(1)}
-            className="px-3 py-1.5 text-[#e2495c] font-bold text-lg leading-none hover:bg-[#e2495c]/10 transition-colors active:scale-90 select-none"
-            aria-label="زيادة"
-          >
-            +
-          </button>
+          {/* Item Specific Notes */}
+          <div className="pr-1">
+            <TextField
+              id={`notes-${index}`}
+              placeholder="ملاحظات خاصة بهذا الصنف..."
+              value={item.notes || ''}
+              onChange={(v) => handleItemChange(index, 'notes', v)}
+            />
+          </div>
         </div>
-      </div>
+      ))}
 
-      {/* الوزن بالكيلو — read-only, auto-calculated */}
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-bold text-[#1a1a2e] text-center">
-          الوزن بالكيلو
-          <span className="mr-1 text-[10px] font-normal text-gray-400">(تلقائي)</span>
-        </label>
-        <div className="w-full bg-[#f0eff8] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#555] text-center">
-          {weightDisplay}
-        </div>
-        {chocolateName && !ratio && (
-          <p className="text-[10px] text-center text-amber-600 font-cairo">
-            نسبة التحويل غير محددة — راجع جدول البحث
-          </p>
-        )}
+      {/* Add Item Button */}
+      <div className="flex justify-start mt-1">
+        <button 
+          type="button"
+          onClick={handleAddItem}
+          className="flex items-center gap-1.5 text-indigo-700 font-bold text-sm font-cairo px-3 py-1.5 rounded-lg bg-indigo-100 hover:bg-indigo-200 transition-colors border border-indigo-200 shadow-sm active:scale-[0.98]"
+        >
+          <span className="text-lg leading-none">➕</span> 
+          إضافة صنف إضافي
+        </button>
       </div>
-
-      {/* ملاحظات */}
-      <TextareaField
-        label="ملاحظات"
-        id="notes"
-        value={data.notes || ''}
-        onChange={(v) => onChange('notes', v)}
-        rows={3}
-      />
     </div>
   );
 }

@@ -113,6 +113,8 @@ function OrderCard({
   onUndoPaid,
   onCollectDeposit,
   onUndoDeposit,
+  onUpdateDeposit,
+  onUpdatePrice,
   onUpdateProduction,
   onCancel,
   onUncancel,
@@ -136,6 +138,28 @@ function OrderCard({
 
   const currentProdStatus = order.productionStatus || 'received';
 
+  const [isEditingDeposit, setIsEditingDeposit] = useState(false);
+  const [editDepositValue, setEditDepositValue] = useState(depositVal);
+
+  const handleSaveEditDeposit = () => {
+    if (onUpdateDeposit) {
+      onUpdateDeposit(order, editDepositValue);
+    }
+    setIsEditingDeposit(false);
+  };
+
+  const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [editPriceValue, setEditPriceValue] = useState(priceVal);
+
+  const handleSaveEditPrice = () => {
+    if (onUpdatePrice) {
+      onUpdatePrice(order, editPriceValue);
+    }
+    setIsEditingPrice(false);
+  };
+
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
     <div
       className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden hover:shadow-md ${
@@ -147,89 +171,103 @@ function OrderCard({
       <div style={{ height: '5px', background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }} />
 
       <div className="p-4">
-        {/* Cancelled Banner if applicable */}
-        {isCancelled && (
-          <div className="bg-red-600 text-white font-cairo font-bold text-xs px-3 py-1.5 rounded-lg mb-3 flex items-center justify-between shadow-sm">
-            <span>🚫 هذه الطلبية ملغية ({order.cancelledReason || 'تم الإلغاء بواسطة الموظف/الإدارة'})</span>
-            <span className="text-[11px] bg-red-800 px-2 py-0.5 rounded">بواسطة: {order.cancelledBy || 'الموظف'}</span>
-          </div>
-        )}
+        {/* Clickable Header Area */}
+        <div 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="cursor-pointer group flex flex-col gap-2"
+        >
+          {/* Cancelled Banner if applicable */}
+          {isCancelled && (
+            <div className="bg-red-600 text-white font-cairo font-bold text-xs px-3 py-1.5 rounded-lg mb-1 flex items-center justify-between shadow-sm">
+              <span>🚫 هذه الطلبية ملغية ({order.cancelledReason || 'تم الإلغاء بواسطة الموظف/الإدارة'})</span>
+              <span className="text-[11px] bg-red-800 px-2 py-0.5 rounded">بواسطة: {order.cancelledBy || 'الموظف'}</span>
+            </div>
+          )}
 
-        {/* Row 1: ID + badges + date */}
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-bold font-cairo" dir="ltr" style={{ color: '#1a1a2e', fontFamily: "'Courier New', monospace", letterSpacing: '0.5px' }}>
-              {order.id}
-            </span>
-            
-            {/* Multiple badges if cart, else single badge */}
-            {isMultiItem ? (
-              order.items.map((item, idx) => {
-                const c = ORDER_TYPE_COLORS[item.orderType] || ORDER_TYPE_COLORS.cake;
-                return (
-                  <span
-                    key={idx}
-                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
-                    style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
-                  >
-                    {ORDER_TYPE_LABELS[item.orderType] || item.orderType}
-                  </span>
-                );
-              })
-            ) : (
-              <span
-                className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
-                style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
-              >
-                {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
+          {/* Row 1: ID + badges + date */}
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-bold font-cairo" dir="ltr" style={{ color: '#1a1a2e', fontFamily: "'Courier New', monospace", letterSpacing: '0.5px' }}>
+                {order.id}
               </span>
-            )}
-
-            {/* Dynamic Payment & Status Badges */}
-            {!isCancelled && (
-              isPaid ? (
-                <span className="bg-green-100 text-green-800 border border-green-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                  ✓ تم السداد بالكامل ({order.paidBy || 'الصندوق'})
+              
+              {/* Multiple badges if cart, else single badge */}
+              {isMultiItem ? (
+                order.items.map((item, idx) => {
+                  const c = ORDER_TYPE_COLORS[item.orderType] || ORDER_TYPE_COLORS.cake;
+                  return (
+                    <span
+                      key={idx}
+                      className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                      style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
+                    >
+                      {ORDER_TYPE_LABELS[item.orderType] || item.orderType}
+                    </span>
+                  );
+                })
+              ) : (
+                <span
+                  className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                  style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
+                >
+                  {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
                 </span>
-              ) : requiresDeposit ? (
-                depositCollected ? (
-                  <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                    ✓ عربون مُحَصَّل (${depositVal}) · باقي عند التسليم: ${remainingVal}
+              )}
+
+              {/* Dynamic Payment & Status Badges */}
+              {!isCancelled && (
+                isPaid ? (
+                  <span className="bg-green-100 text-green-800 border border-green-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                    ✓ تم السداد بالكامل ({order.paidBy || 'الصندوق'})
                   </span>
+                ) : requiresDeposit ? (
+                  depositCollected ? (
+                    <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                      ✓ عربون مُحَصَّل (${depositVal}) · باقي عند التسليم: ${remainingVal}
+                    </span>
+                  ) : (
+                    <span className="bg-amber-100 text-amber-800 border border-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 animate-pulse">
+                      ⏳ بانتظار تحصيل عربون: ${depositVal}
+                    </span>
+                  )
                 ) : (
-                  <span className="bg-amber-100 text-amber-800 border border-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 animate-pulse">
-                    ⏳ بانتظار تحصيل عربون: ${depositVal}
+                  <span className="bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
+                    ⏳ بانتظار تحصيل المبلغ الكامل عند التسليم (${priceVal})
                   </span>
                 )
-              ) : (
-                <span className="bg-slate-100 text-slate-800 border border-slate-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                  ⏳ بانتظار تحصيل المبلغ الكامل عند التسليم (${priceVal})
-                </span>
-              )
-            )}
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400 font-cairo" dir="ltr">
+                {fmtDate(order.createdAt)}
+              </span>
+              <span className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
+            </div>
           </div>
-          <span className="text-xs text-gray-400 font-cairo" dir="ltr">
-            {fmtDate(order.createdAt)}
-          </span>
+
+          {/* Row 2: Customer info */}
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm"
+              style={{ background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}
+            >
+              {(order.header?.customerName || '?')[0]}
+            </div>
+            <div className="min-w-0">
+              <p className="text-base font-bold text-gray-800 font-cairo truncate">
+                {order.header?.customerName || '—'}
+              </p>
+              <p className="text-xs text-gray-500 font-cairo" dir="ltr">
+                {order.header?.customerPhone || ''}
+              </p>
+            </div>
+          </div>
         </div>
 
-        {/* Row 2: Customer info */}
-        <div className="flex items-center gap-3 mb-2.5">
-          <div
-            className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm"
-            style={{ background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}
-          >
-            {(order.header?.customerName || '?')[0]}
-          </div>
-          <div className="min-w-0">
-            <p className="text-base font-bold text-gray-800 font-cairo truncate">
-              {order.header?.customerName || '—'}
-            </p>
-            <p className="text-xs text-gray-500 font-cairo" dir="ltr">
-              {order.header?.customerPhone || ''}
-            </p>
-          </div>
-        </div>
+        {/* Collapsible Content */}
+        {isExpanded && (
+          <div className="mt-4 pt-4 border-t border-gray-100 animate-fadeIn">
 
         {/* Row 3: Body summary & Delivery specs */}
         <div className="bg-gray-50 rounded-lg p-2.5 mb-3 border border-gray-100">
@@ -360,17 +398,102 @@ function OrderCard({
           <div className="text-xs font-cairo mb-3.5 p-3 rounded-xl border bg-slate-50 border-slate-200 shadow-inner">
             <div className="flex items-center justify-between mb-1">
               <span className="text-gray-500 font-bold">السعر الإجمالي للطلب:</span>
-              <span className="font-extrabold text-slate-900 text-base" dir="ltr">${priceVal}</span>
+              <div className="flex items-center gap-2">
+                {isEditingPrice ? (
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="number"
+                      dir="ltr"
+                      className="w-20 px-2 py-0.5 text-xs border border-indigo-400 rounded focus:outline-none"
+                      value={editPriceValue}
+                      onChange={(e) => setEditPriceValue(e.target.value)}
+                    />
+                    <button
+                      onClick={handleSaveEditPrice}
+                      disabled={isUpdating}
+                      className="bg-indigo-600 text-white px-2 py-0.5 rounded text-xs hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      حفظ
+                    </button>
+                    <button
+                      onClick={() => setIsEditingPrice(false)}
+                      className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs hover:bg-gray-300"
+                    >
+                      إلغاء
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="font-extrabold text-slate-900 text-base" dir="ltr">${priceVal}</span>
+                    {(!isPaid && onUpdatePrice) && (
+                      <button 
+                        onClick={() => {
+                          setEditPriceValue(priceVal);
+                          setIsEditingPrice(true);
+                        }}
+                        className="hover:scale-110 transition-transform bg-gray-200 hover:bg-gray-300 rounded px-1.5 py-0.5 text-[10px]"
+                        title="تعديل السعر الإجمالي"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {requiresDeposit && (
+            {(requiresDeposit || (!isPaid && onUpdateDeposit)) && (
               <div className="flex items-center justify-between pt-1.5 mt-1 border-t border-slate-200">
                 <span className="text-indigo-900 font-semibold">
                   قيمة العربون المقرر في الطلب:
                 </span>
-                <span className={`font-bold px-2 py-0.5 rounded ${depositCollected ? 'bg-green-100 text-green-800 border border-green-300' : 'bg-amber-100 text-amber-900 border border-amber-300'}`}>
-                  {depositCollected ? `✓ تم استلام العربون ($${depositVal})` : `⏳ لم يتم تحصيل العربون بعد ($${depositVal})`}
-                </span>
+                
+                <div className="flex items-center gap-2">
+                  {isEditingDeposit ? (
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        dir="ltr"
+                        className="w-20 px-2 py-0.5 text-xs border border-indigo-400 rounded focus:outline-none"
+                        value={editDepositValue}
+                        onChange={(e) => setEditDepositValue(e.target.value)}
+                      />
+                      <button
+                        onClick={handleSaveEditDeposit}
+                        disabled={isUpdating}
+                        className="bg-indigo-600 text-white px-2 py-0.5 rounded text-xs hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        حفظ
+                      </button>
+                      <button
+                        onClick={() => setIsEditingDeposit(false)}
+                        className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs hover:bg-gray-300"
+                      >
+                        إلغاء
+                      </button>
+                    </div>
+                  ) : (
+                    <span className={`flex items-center gap-2 font-bold px-2 py-0.5 rounded ${depositCollected ? 'bg-green-100 text-green-800 border border-green-300' : (!requiresDeposit && depositVal === '0' ? 'bg-gray-100 text-gray-600 border border-gray-300' : 'bg-amber-100 text-amber-900 border border-amber-300')}`}>
+                      {depositCollected 
+                        ? `✓ تم استلام العربون ($${depositVal})` 
+                        : (!requiresDeposit && depositVal === '0' 
+                          ? `بدون عربون ($0)` 
+                          : `⏳ لم يتم تحصيل العربون بعد ($${depositVal})`)}
+                      {(!isPaid && onUpdateDeposit) && (
+                        <button 
+                          onClick={() => {
+                            setEditDepositValue(depositVal);
+                            setIsEditingDeposit(true);
+                          }}
+                          className="hover:scale-110 transition-transform bg-white/50 rounded px-1 text-[10px]"
+                          title="تعديل قيمة العربون"
+                        >
+                          ✏️
+                        </button>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             )}
 
@@ -454,13 +577,14 @@ function OrderCard({
           )}
 
           {/* Cancel Order Action */}
-          {!isCancelled && (
+          {!isCancelled && onCancel && (
             <button
               onClick={() => onCancel(order)}
-              disabled={isUpdating}
-              className="border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1 disabled:opacity-50"
+              disabled={isUpdating || isPaid || order.paymentMethod === 'Cash' || order.paymentMethod === 'كاش'}
+              className="border border-red-300 text-red-700 bg-red-50 hover:bg-red-100 text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+              title={(isPaid || order.paymentMethod === 'Cash' || order.paymentMethod === 'كاش') ? "لا يمكن إلغاء طلب مدفوع نقداً" : "إلغاء الطلبية"}
             >
-              🚫 إلغاء الطلبية
+              🚫 طلب إلغاء الطلب
             </button>
           )}
 
@@ -483,6 +607,8 @@ function OrderCard({
             💬 إرسال واتساب للزبون
           </button>
         </div>
+        </div>
+        )}
       </div>
     </div>
   );
@@ -617,6 +743,52 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
     } catch (e) {
       alert('فشل في تحديث حالة الدفع الكامل. تحقق من الإنترنت.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ── Update Deposit Amount ──
+  const handleUpdateDeposit = async (order, newDepositAmount) => {
+    setUpdatingId(order.id);
+    const pNum = parseFloat(order.footer?.price) || 0;
+    const dNum = parseFloat(newDepositAmount) || 0;
+    const rem = Math.max(0, pNum - dNum);
+    const patch = {
+      footer: {
+        ...order.footer,
+        depositAmount: String(dNum),
+        remaining: String(rem)
+      }
+    };
+    try {
+      await updateOrder(order.id, patch);
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
+    } catch (e) {
+      alert('فشل في تحديث قيمة العربون.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  // ── Update Overall Price ──
+  const handleUpdatePrice = async (order, newPriceAmount) => {
+    setUpdatingId(order.id);
+    const pNum = parseFloat(newPriceAmount) || 0;
+    const dNum = parseFloat(order.footer?.depositAmount) || 0;
+    const rem = Math.max(0, pNum - dNum);
+    const patch = {
+      footer: {
+        ...order.footer,
+        price: String(pNum),
+        remaining: String(rem)
+      }
+    };
+    try {
+      await updateOrder(order.id, patch);
+      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
+    } catch (e) {
+      alert('فشل في تحديث السعر الإجمالي.');
     } finally {
       setUpdatingId(null);
     }
@@ -832,9 +1004,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                 <span>📋</span>
                 <span>{isCashier ? 'إدارة التحصيل المالي واستلام العربون' : 'سجل الطلبات ومتابعة التحضير بالمصنع'}</span>
               </h1>
-              <p className="text-xs text-gray-500 font-cairo mt-0.5">
-                {isCashier ? 'قم بتسجيل استلام العربون المقدم أولاً، وتأكيد استلام المتبقي عند التسليم النهائي' : 'تابع مواعيد التسليم، حالات التحضير بالمصنع، وعَدّل على أي طلب بسهولة'}
-              </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {lastRefreshed && (
@@ -852,32 +1021,10 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
             </div>
           </div>
 
-          {/* ── "Due Today" Quick Alert Dashboard Banner ── */}
-          {!loading && dueTodayCount > 0 && !showCancelledOnly && (
-            <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 mb-4 flex items-center justify-between gap-3 shadow-sm font-cairo">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">⏰</span>
-                <div>
-                  <h3 className="text-sm font-extrabold text-amber-950">تنبيه مواعيد التسليم: يوجد لديك ({dueTodayCount}) طلبات موعد تسليمها اليوم أو فائتة لم تكتمل!</h3>
-                  <p className="text-xs text-amber-800">تأكد من جهوزيتها في المصنع وتحصيل المستحقات المالية</p>
-                </div>
-              </div>
-              {dateFilter !== 'today' && (
-                <button
-                  onClick={() => setDateFilter('today')}
-                  className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-4 py-2 rounded-lg transition-colors shrink-0 shadow"
-                >
-                  عرض طلبات اليوم فقط
-                </button>
-              )}
-            </div>
-          )}
-
           {/* 1. Delivery Date Quick Filter Bar */}
           <div className="mb-3.5 bg-indigo-50/60 p-2.5 rounded-xl border border-indigo-100">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 overflow-x-auto">
-                <span className="text-xs font-extrabold text-indigo-950 font-cairo ml-1">📅 موعد التسليم:</span>
                 {DATE_TABS.map(tab => (
                   <button
                     key={tab.key}
@@ -910,8 +1057,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
           {/* 2. Production Status Filter Bar (For Kitchen / Staff) */}
           {!showCancelledOnly && ENABLE_FACTORY_SYSTEM && (
-            <div className="mb-3.5 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
-              <span className="text-xs font-bold text-slate-800 font-cairo mb-1.5 block">🏭 تصفية حسب مرحلة العمل بالمصنع:</span>
+            <div className="mb-3.5 bg-slate-50 p-1.5 rounded-xl border border-slate-200/80">
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
                 {PRODUCTION_TABS.map(tab => (
                   <button
@@ -932,8 +1078,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
           {/* 3. Payment Status Segmented Filter Bar */}
           {!showCancelledOnly && (
-            <div className="mb-4">
-              <span className="text-xs font-bold text-gray-700 font-cairo mb-1.5 block">💰 تصنيف حسب حالة التحصيل المالي (للصندوق):</span>
+            <div className="mb-3.5">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-1.5 bg-slate-100 rounded-xl border border-slate-200">
                 {PAYMENT_TABS.map(tab => {
                   const isActive = paymentFilter === tab.key;
@@ -981,7 +1126,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
           {/* 5. Category tabs & Result Count */}
           <div className="flex items-center gap-1.5 mb-5 overflow-x-auto pb-1 border-b border-gray-100 pt-1">
-            <span className="text-xs text-gray-400 font-cairo font-bold ml-1">الصنف:</span>
             {FILTER_TABS.map(tab => (
               <button
                 key={tab.key}
@@ -1037,6 +1181,8 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                   onUndoPaid={handleUndoPaid}
                   onCollectDeposit={handleCollectDeposit}
                   onUndoDeposit={handleUndoDeposit}
+                  onUpdateDeposit={handleUpdateDeposit}
+                  onUpdatePrice={handleUpdatePrice}
                   onUpdateProduction={handleUpdateProduction}
                   onCancel={!isCashier ? handleCancelOrder : null}
                   onUncancel={!isCashier ? handleUncancelOrder : null}

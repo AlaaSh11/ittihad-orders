@@ -3,17 +3,31 @@ import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
 import {
   CHOCOLATE_TYPES,
+  CHOCOLATE_NAMES,
+  CHOCOLATE_FILLING_MAP,
   CHOCOLATE_UNIT_MAP,
+  CHOCOLATE_FILLING_UNIT_MAP,
   DEFAULT_CHOCOLATE_UNIT,
   CHOCOLATE_PAPER_COLORS,
 } from '../../constants/chocolateOrderFields';
 
 /**
  * Body fields for Chocolate orders — Tab 3.
+ *
+ * Changes vs original:
+ *   - نوع الشوكولا: added بلجيكي and وطني options (via updated constant)
+ *   - "نوع الحشو" → "اسم الشوكولا" (label rename; field id 'fillingType' preserved)
+ *   - "طريقة التغليف" field label → "لون الورق" (field id 'wrappingMethod' preserved)
+ *   - الكمية: conditional unit label derived from selected نوع الشوكولا and اسم الشوكولا
  */
 export default function ChocolateOrderBody({ data, onChange }) {
-  // Derive unit label from selected chocolate type
-  const quantityUnit = CHOCOLATE_UNIT_MAP[data.chocolateType] || DEFAULT_CHOCOLATE_UNIT;
+  // Derive unit label from selected chocolate filling (priority) or type
+  const quantityUnit = CHOCOLATE_FILLING_UNIT_MAP[data.fillingType] || CHOCOLATE_UNIT_MAP[data.chocolateType] || DEFAULT_CHOCOLATE_UNIT;
+
+  // Dynamically load options based on selected type, fallback to all names
+  const fillingOptions = data.chocolateType && CHOCOLATE_FILLING_MAP[data.chocolateType]
+    ? CHOCOLATE_FILLING_MAP[data.chocolateType]
+    : CHOCOLATE_NAMES;
 
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -40,8 +54,19 @@ export default function ChocolateOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
+      {/* اسم الشوكولا — was "نوع الحشو"; label renamed, field id 'fillingType' preserved */}
+      <SelectField
+        label="اسم الشوكولا"
+        id="fillingType"
+        options={fillingOptions}
+        value={data.fillingType || ''}
+        onChange={(v) => onChange('fillingType', v)}
+        withOther
+        placeholder="اختر"
+      />
+
       {/* الكمية — unit label driven by نوع الشوكولا */}
-      <div className="flex flex-col gap-1 col-span-full">
+      <div className="flex flex-col gap-1">
         <label htmlFor="chocolateQuantity" className="text-xs font-bold text-[#1a1a2e] text-center">
           الكمية
           {quantityUnit && (

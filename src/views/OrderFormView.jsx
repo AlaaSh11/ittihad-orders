@@ -269,9 +269,14 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
       const autoTotalLBP = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceLBP) || 0), 0);
       const autoTotalUSD = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceUSD) || 0), 0);
       const hasItemPrices = cartItems.some(i => i.priceLBP || i.priceUSD);
-      const priceVal = parseFloat(footerData.price) || autoTotalLBP;
+      const priceVal = parseFloat(footerData.price) || autoTotalUSD;
       const remainingVal = parseFloat(footerData.remaining) || 0;
       const hasZeroPrice = priceVal === 0 && remainingVal === 0 && autoTotalUSD === 0;
+
+      const finalFooter = {
+        ...footerData,
+        price: hasItemPrices ? String(autoTotalUSD) : footerData.price
+      };
 
       if (isEditMode) {
         const patch = {
@@ -280,7 +285,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           // Remove old schema fields to prevent confusion
           orderType: null,
           body: null,
-          footer: { ...footerData },
+          footer: finalFooter,
           isPaid: editingOrder.isPaid || false,
           depositCollected: editingOrder.depositCollected || false,
         };
@@ -297,7 +302,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           createdAt: new Date().toISOString(),
           header: { ...headerData },
           items: cartItems,
-          footer: { ...footerData },
+          footer: finalFooter,
           isPaid: hasZeroPrice ? true : false,
           depositCollected: false,
           depositCollectedAt: null,
@@ -329,11 +334,17 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     if (!isSaved && !window.confirm('⚠️ تنبيه: لم تقم بحفظ هذه الطلبية بعد. هل تريد الاستمرار؟')) {
       return;
     }
+    
+    // Auto-compute totals from cart items in case they click before saving
+    const autoTotalUSD = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceUSD) || 0), 0);
+    const hasItemPrices = cartItems.some(i => i.priceLBP || i.priceUSD);
+    const computedPrice = hasItemPrices ? String(autoTotalUSD) : footerData.price;
+
     const order = savedOrder || {
       id: orderId,
       header: headerData,
       items: cartItems,
-      footer: footerData,
+      footer: { ...footerData, price: computedPrice },
     };
     const url = buildWhatsAppUrl(order);
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -371,6 +382,17 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   };
 
   const BodyComponent = BODY_COMPONENTS[draftType] || CakeOrderBody;
+
+  const isHeaderValid = () => {
+    const h = headerData;
+    if (!h.customerName?.trim()) return false;
+    if (!h.customerPhone?.trim()) return false;
+    if (!h.deliveryDate) return false;
+    if (!h.deliveryTime) return false;
+    if (!h.deliveryMethod) return false;
+    if (h.deliveryMethod?.includes('توصيل') && !h.deliveryAddress?.trim()) return false;
+    return true;
+  };
 
   return (
     <div className="min-h-screen bg-[#eaeaf2] print:bg-white" dir="rtl">
@@ -436,9 +458,33 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
         <div className="flex items-center justify-between bg-white rounded-xl border border-gray-200 p-2 shadow-sm font-cairo text-sm">
           <button onClick={() => setStep(1)} className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 1 ? 'bg-indigo-600 text-white shadow' : 'text-gray-500 hover:bg-gray-100'}`}>1. بيانات الزبون</button>
           <div className="w-4 text-center text-gray-300">❯</div>
-          <button onClick={() => { if(headerData.deliveryDate) setStep(2); }} className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 2 ? 'bg-indigo-600 text-white shadow' : step > 2 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${!headerData.deliveryDate && !isEditMode ? 'opacity-50 cursor-not-allowed' : ''}`}>2. الأصناف</button>
+          <button 
+            onClick={() => { 
+              if(isHeaderValid()) {
+                setSaveError('');
+                setStep(2); 
+              } else {
+                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم أولاً.');
+              }
+            }} 
+            className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 2 ? 'bg-indigo-600 text-white shadow' : step > 2 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${!isHeaderValid() && !isEditMode ? 'opacity-50' : ''}`}
+          >
+            2. الأصناف
+          </button>
           <div className="w-4 text-center text-gray-300">❯</div>
-          <button onClick={() => { if(cartItems.length > 0) setStep(3); }} className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 3 ? 'bg-indigo-600 text-white shadow' : step > 3 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${cartItems.length === 0 ? 'opacity-50 cursor-not-allowed' : ''}`}>3. الدفع والحفظ</button>
+          <button 
+            onClick={() => { 
+              if(isHeaderValid() && cartItems.length > 0) {
+                setSaveError('');
+                setStep(3); 
+              } else if (!isHeaderValid()) {
+                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم أولاً.');
+              }
+            }} 
+            className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 3 ? 'bg-indigo-600 text-white shadow' : step > 3 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${(cartItems.length === 0 || !isHeaderValid()) ? 'opacity-50' : ''}`}
+          >
+            3. الدفع والحفظ
+          </button>
         </div>
       </div>
 
@@ -465,8 +511,29 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
               <div className="mt-6 flex justify-end">
                 <button
                   onClick={() => {
-                    if (!headerData.deliveryDate) {
-                      setSaveError('⚠️ يرجى تحديد تاريخ التسليم للمتابعة.');
+                    const h = headerData;
+                    if (!h.customerName?.trim()) {
+                      setSaveError('⚠️ يرجى إدخال اسم الزبون.');
+                      return;
+                    }
+                    if (!h.customerPhone?.trim()) {
+                      setSaveError('⚠️ يرجى إدخال رقم الزبون.');
+                      return;
+                    }
+                    if (!h.deliveryDate) {
+                      setSaveError('⚠️ يرجى تحديد تاريخ التسليم.');
+                      return;
+                    }
+                    if (!h.deliveryTime) {
+                      setSaveError('⚠️ يرجى تحديد وقت التسليم.');
+                      return;
+                    }
+                    if (!h.deliveryMethod) {
+                      setSaveError('⚠️ يرجى اختيار طريقة التسليم.');
+                      return;
+                    }
+                    if (h.deliveryMethod?.includes('توصيل') && !h.deliveryAddress?.trim()) {
+                      setSaveError('⚠️ يرجى إدخال عنوان التوصيل.');
                       return;
                     }
                     setSaveError('');
@@ -663,7 +730,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                 const autoTotalLBP = cartItems.reduce((s, i) => s + (parseFloat(i.priceLBP) || 0), 0);
                 const autoTotalUSD = cartItems.reduce((s, i) => s + (parseFloat(i.priceUSD) || 0), 0);
                 const hasItemPrices = cartItems.some(i => i.priceLBP || i.priceUSD);
-                const displayPrice = autoTotalLBP > 0 ? String(autoTotalLBP) : (footerData.price || '');
+                const displayPrice = autoTotalUSD > 0 ? String(autoTotalUSD) : (footerData.price || '');
                 return (
                   <>
                     <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 mb-4">
@@ -711,12 +778,12 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                     <OrderFooter
                       data={{ ...footerData, price: displayPrice }}
                       onChange={(field, value) => {
-                        if (field === 'price' && autoTotalLBP > 0) return;
+                        if (field === 'price' && autoTotalUSD > 0) return;
                         handleFooterChange(field, value);
                       }}
                       variant="showroom"
-                      priceReadOnly={autoTotalLBP > 0}
-                      priceReadOnlyNote={autoTotalLBP > 0 ? `مجموع LBP محتسب تلقائياً` : null}
+                      priceReadOnly={autoTotalUSD > 0}
+                      priceReadOnlyNote={autoTotalUSD > 0 ? `مجموع USD محتسب تلقائياً` : null}
                     />
                   </>
                 );
