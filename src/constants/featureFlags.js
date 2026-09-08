@@ -5,4 +5,4 @@
 // subsystems cleanly without modifying underlying logic.
 // ============================================================
 
-export const ENABLE_FACTORY_SYSTEM = false; // Set to false to hide KDS buttons and step-by-step production stages; set true to reveal when ready
+export const ENABLE_FACTORY_SYSTEM = true; // Set to false to hide KDS buttons and step-by-step production stages; set true to reveal when ready

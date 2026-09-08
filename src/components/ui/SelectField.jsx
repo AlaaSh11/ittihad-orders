@@ -28,22 +28,28 @@ export default function SelectField({
   className = '',
 }) {
   const OTHER = 'أخرى';
-  const isOther = withOther && value === OTHER;
   const [customText, setCustomText] = useState('');
+  const [showCustom, setShowCustom] = useState(false);
+
+  // Show custom input if explicitly in "Other" mode OR if value doesn't match any option
+  const isOther = withOther && (showCustom || (value && value !== OTHER && !options.includes(value)));
 
   const handleSelect = (e) => {
     const v = e.target.value;
     if (v === OTHER) {
       setCustomText('');
+      setShowCustom(true);
       onChange(OTHER);
     } else {
+      setShowCustom(false);
       onChange(v);
     }
   };
 
   const handleCustom = (e) => {
-    setCustomText(e.target.value);
-    onChange(e.target.value); // Pass the typed text directly up
+    const typed = e.target.value;
+    setCustomText(typed);
+    onChange(typed); // Pass the typed text directly up
   };
 
   return (
@@ -79,7 +85,7 @@ export default function SelectField({
         <input
           id={`${id}_custom`}
           type="text"
-          value={customText}
+          value={customText || (value !== OTHER ? value : '')}
           onChange={handleCustom}
           placeholder="اكتب هنا..."
           autoFocus

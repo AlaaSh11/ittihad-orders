@@ -44,7 +44,7 @@ export default function OrderHeader({ data, onChange, locked = false, orderId, c
   return (
     <div className="mb-3">
       {/* ── Title row ── */}
-      <div className="grid grid-cols-3 items-start mb-2 gap-2">
+      <div className="grid grid-cols-2 items-start mb-2 gap-2">
         {/* Order date — auto, left */}
         <div className="flex flex-col">
           <label className="text-xs font-bold text-[#1a1a2e] text-center mb-1">التاريخ</label>
@@ -61,14 +61,6 @@ export default function OrderHeader({ data, onChange, locked = false, orderId, c
           <h1 className="text-xl font-extrabold text-[#2857a4] leading-tight">طلبية قالب كايك</h1>
           <div className="text-sm font-mono font-bold text-[#333] tracking-widest mt-0.5 text-left" dir="ltr">
             {orderId}
-          </div>
-        </div>
-
-        {/* Recipient / Employee Name — right (RTL left) */}
-        <div className="flex flex-col items-end pt-1">
-          <label className="text-[10px] font-bold text-gray-400 font-cairo mb-0.5">الموظف (المستلم)</label>
-          <div className="text-sm font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-3 py-1 rounded-lg font-cairo shadow-sm truncate max-w-[120px]" title={data.recipient || currentUser?.name || 'غير محدد'}>
-            {data.recipient || currentUser?.name || 'غير محدد'}
           </div>
         </div>
       </div>
@@ -155,7 +147,6 @@ export default function OrderHeader({ data, onChange, locked = false, orderId, c
           value={data.deliveryMethod}
           onChange={(v) => onChange('deliveryMethod', v)}
           disabled={locked}
-          withOther
         />
 
         {/* ── Delivery Address — dynamically shown ── */}
