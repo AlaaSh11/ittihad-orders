@@ -21,7 +21,7 @@ const INTERNAL_DOMAIN = '@ittihad.local';
  * @returns {boolean}
  */
 export function isWithinWorkingHours(role) {
-  if (role === 'admin') return true; // Owners / admins retain full 24/7 emergency access
+  if (role === 'admin' || role === 'boss') return true; // Owners, admins & boss oversight retain full 24/7 access
   const now = new Date();
   const hour = now.getHours();
   // Allowed strictly from 07:00 (hour >= 7) until 22:00 (hour < 22)

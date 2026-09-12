@@ -109,14 +109,20 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
   const filteredOrders = useMemo(() => {
     let list = orders;
 
-    // Filter by product type if requested
+    // Filter by product type — works for both new (items array) and legacy (orderType root) schemas
     if (filterType !== 'all_types') {
-      list = list.filter(o => o.orderType === filterType);
+      list = list.filter(o => {
+        // New schema: multi-item orders — check if any item matches
+        if (Array.isArray(o.items) && o.items.length > 0) {
+          return o.items.some(i => i.orderType === filterType);
+        }
+        // Legacy schema: single orderType at root
+        return o.orderType === filterType;
+      });
     }
 
     // Filter by KDS stage tab
     if (activeTab === 'active') {
-      // Shows anything Received or In Progress
       return list.filter(o => !o.productionStatus || o.productionStatus === 'received' || o.productionStatus === 'in_progress');
     }
     if (activeTab === 'all') {
@@ -295,9 +301,21 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
             const st = order.productionStatus || 'received';
             const badge = STATUS_BADGES[st] || STATUS_BADGES.received;
             const isUpdatingThis = updatingId === order.id;
-            const addons = resolveAddons(order.body?.addons);
             const dueToday = order.header?.deliveryDate === new Date().toISOString().split('T')[0];
-            
+
+            // Normalize to items array — works for both new and legacy schemas
+            const isMultiItem = Array.isArray(order.items) && order.items.length > 0;
+            const itemsToRender = isMultiItem
+              ? order.items
+              : (order.orderType && order.body ? [{ orderType: order.orderType, body: order.body }] : []);
+
+            // Build type label for the header badge
+            const TYPE_ICONS = { cake: '🎂', chocolate: '🍫', occasion: '🎁', simple: '🛒' };
+            const TYPE_LABELS = { cake: 'كيك', chocolate: 'شوكولا', occasion: 'مناسبة', simple: 'بسيط' };
+            const typeBadgeText = isMultiItem
+              ? [...new Set(order.items.map(i => i.orderType))].map(t => `${TYPE_ICONS[t] || '📦'} ${TYPE_LABELS[t] || t}`).join(' + ')
+              : `${TYPE_ICONS[order.orderType] || '📦'} طلب ${TYPE_LABELS[order.orderType] || order.orderType || '—'}`;
+
             return (
               <div
                 key={order.id}
@@ -307,7 +325,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                 {/* Ticket Top Banner */}
                 <div>
                   <div className="bg-slate-900/80 p-3.5 border-b border-slate-800 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-lg font-black font-mono text-amber-400 bg-slate-950 px-2.5 py-0.5 rounded border border-slate-800">
                         {order.id}
                       </span>
@@ -315,9 +333,8 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                         {badge.label}
                       </span>
                     </div>
-
-                    <span className="text-xs font-black text-slate-300 bg-slate-800 px-2 py-1 rounded border border-slate-700">
-                      {order.orderType === 'cake' ? '🎂 طلب كيك' : order.orderType === 'chocolate' ? '🍫 شوكولا' : '🎁 مناسبة'}
+                    <span className="text-xs font-black text-slate-300 bg-slate-800 px-2 py-1 rounded border border-slate-700 shrink-0">
+                      {typeBadgeText}
                     </span>
                   </div>
 
@@ -336,120 +353,152 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                     )}
                   </div>
 
-                  {/* Body Content - Pure Culinary Specs (No Financials) */}
-                  <div className="p-4 space-y-3.5">
-                    
-                    {/* Cake Order Specific Display */}
-                    {order.orderType === 'cake' && order.body && (
-                      <>
-                        {/* Highlights Grid */}
-                        <div className="grid grid-cols-2 gap-2 text-xs font-semibold bg-slate-900/60 p-3 rounded-xl border border-slate-800">
-                          <div>
-                            <span className="text-slate-400 block text-[11px]">الشكل والقالب:</span>
-                            <span className="text-sm font-black text-white">{order.body.cakeShape || '—'} · {order.body.cakeType || '—'}</span>
-                          </div>
-                          <div>
-                            <span className="text-slate-400 block text-[11px]">القياس والأشخاص:</span>
-                            <span className="text-sm font-black text-amber-300" dir="ltr">{order.body.cakeSize || '—'} · ({order.body.serves || '؟'} شخص)</span>
-                          </div>
-                          <div className="pt-2 border-t border-slate-800 col-span-2 flex flex-wrap justify-between gap-2">
-                            <div>
-                              <span className="text-slate-400 text-[11px]">النكهة: </span>
-                              <span className="font-extrabold text-white">{order.body.cakeFlavor || '—'}</span>
+                  {/* Body Content — renders each item */}
+                  <div className="p-4 space-y-4">
+                    {itemsToRender.map((item, itemIdx) => {
+                      const { orderType, body } = item;
+                      const itemAddons = resolveAddons(body?.addons);
+                      const showItemHeader = itemsToRender.length > 1;
+
+                      return (
+                        <div key={itemIdx} className={showItemHeader ? 'border border-slate-700/60 rounded-xl overflow-hidden' : ''}>
+                          {/* Item header — only shown when multiple items */}
+                          {showItemHeader && (
+                            <div className="bg-slate-700/50 px-3 py-1.5 text-[11px] font-black text-slate-300 flex items-center gap-1.5">
+                              <span>{TYPE_ICONS[orderType] || '📦'}</span>
+                              <span>الصنف {itemIdx + 1}: {TYPE_LABELS[orderType] || orderType}</span>
                             </div>
-                            <div>
-                              <span className="text-slate-400 text-[11px]">الحشوة: </span>
-                              <span className="font-extrabold text-indigo-300">{order.body.cakeFilling || '—'}</span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 text-[11px]">لون القالب: </span>
-                              <span className="font-extrabold text-pink-300">{order.body.cakeColor || '—'}</span>
-                            </div>
+                          )}
+
+                          <div className={`space-y-3 ${showItemHeader ? 'p-3' : ''}`}>
+
+                            {/* ── CAKE ── */}
+                            {orderType === 'cake' && body && (
+                              <>
+                                <div className="grid grid-cols-2 gap-2 text-xs font-semibold bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+                                  <div>
+                                    <span className="text-slate-400 block text-[11px]">الشكل والقالب:</span>
+                                    <span className="text-sm font-black text-white">{body.cakeShape || '—'} · {body.cakeType || '—'}</span>
+                                  </div>
+                                  <div>
+                                    <span className="text-slate-400 block text-[11px]">القياس والأشخاص:</span>
+                                    <span className="text-sm font-black text-amber-300" dir="ltr">{body.cakeSize || '—'} · ({body.serves || '؟'} شخص)</span>
+                                  </div>
+                                  <div className="pt-2 border-t border-slate-800 col-span-2 flex flex-wrap justify-between gap-2">
+                                    <div><span className="text-slate-400 text-[11px]">النكهة: </span><span className="font-extrabold text-white">{body.cakeFlavor || '—'}</span></div>
+                                    <div><span className="text-slate-400 text-[11px]">الحشوة: </span><span className="font-extrabold text-indigo-300">{body.cakeFilling || '—'}</span></div>
+                                    <div><span className="text-slate-400 text-[11px]">لون القالب: </span><span className="font-extrabold text-pink-300">{body.cakeColor || '—'}</span></div>
+                                  </div>
+                                </div>
+
+                                {(body.inscription || body.writeOn) && (
+                                  <div className="bg-purple-950/40 border border-purple-800/60 rounded-xl p-3 shadow-inner">
+                                    <span className="text-[11px] font-extrabold text-purple-300 block mb-1">
+                                      ✍️ النص على القالب {body.writeOn ? `(المكان: ${body.writeOn})` : ''}:
+                                    </span>
+                                    <p className="text-base font-black text-white bg-slate-950/80 p-2.5 rounded-lg border border-purple-500/30 text-center select-all">
+                                      {body.inscription ? `« ${body.inscription} »` : '— بدون كتابة —'}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {(body.photoSize && body.photoSize !== 'بلا صورة') && (
+                                  <div className="text-xs bg-slate-800/80 p-2 rounded-lg border border-slate-700 flex justify-between">
+                                    <span>🖼️ الطباعة: <strong className="text-white">{body.photoSize}</strong></span>
+                                    {body.photoSource && <span>المصدر: <strong className="text-slate-300">{body.photoSource}</strong></span>}
+                                  </div>
+                                )}
+
+                                {itemAddons && itemAddons.length > 0 && (
+                                  <div>
+                                    <span className="text-xs font-bold text-slate-400 block mb-1.5">🌟 إضافات واكسسوارات:</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {itemAddons.map((label, idx) => (
+                                        <span key={idx} className="bg-amber-500/10 border border-amber-500/30 text-amber-300 font-black text-xs px-2.5 py-1 rounded-lg">✓ {label}</span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {body.referencePhoto && (
+                                  <div>
+                                    <span className="text-xs font-black text-slate-300 block mb-1">📸 صورة التصميم المرجعية:</span>
+                                    <div
+                                      onClick={() => setZoomedPhoto(body.referencePhoto)}
+                                      className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-950 h-40 flex items-center justify-center"
+                                    >
+                                      <img src={body.referencePhoto} alt="مرجع التصميم" className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105" />
+                                      <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <span className="bg-slate-900/90 text-white font-black text-xs px-3 py-1.5 rounded-full border border-slate-600">🔍 اضغط لتكبير</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+                              </>
+                            )}
+
+                            {/* ── CHOCOLATE ── */}
+                            {orderType === 'chocolate' && body && (
+                              <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 text-sm space-y-2 font-bold">
+                                <p>🍫 نوع الشوكولا: <span className="text-amber-300">{body.chocolateType || '—'}</span></p>
+                                <p>🎨 لون الورق: <span className="text-indigo-300">{body.wrappingMethod || '—'}</span></p>
+                                <p>🥟 اسم الشوكولا: <span className="text-indigo-300">{body.fillingType || '—'}</span></p>
+                                <p>⚖️ الكمية: <span className="text-white font-black">{body.quantity || '—'}</span></p>
+                                {body.specifications && <p>📋 المواصفات: <span className="text-slate-300">{body.specifications}</span></p>}
+                                {body.notes && <p>📝 ملاحظات: <span className="text-slate-400">{body.notes}</span></p>}
+                              </div>
+                            )}
+
+                            {/* ── OCCASION ── */}
+                            {orderType === 'occasion' && body && (
+                              <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 text-sm space-y-2 font-bold">
+                                <p>🎁 نوع الضيافة: <span className="text-amber-300">{body.hospitalityType || '—'}</span></p>
+                                <p>🔢 الكمية: <span className="text-white font-black">{body.quantity || '—'}</span></p>
+                                <p>🎀 طريقة اللف: <span className="text-indigo-300">{body.wrappingMethod || '—'}</span></p>
+                                <p>🎨 لون التغليف: <span className="text-slate-300">{body.wrappingColor || '—'}</span></p>
+                                {body.flowerColor && <p>🌸 لون الوردة: <span className="text-pink-300">{body.flowerColor}</span></p>}
+                                {body.basketCount && <p>🧺 عدد السلال: <span className="text-slate-300">{body.basketCount}</span></p>}
+                                {body.tissueCount && <p>🧻 عدد المحارم: <span className="text-slate-300">{body.tissueCount}</span></p>}
+                                {body.napkinHolderCount && <p>📦 عدد الوايبس: <span className="text-slate-300">{body.napkinHolderCount}</span></p>}
+                                {body.trayCount && <p>🥧 عدد الصواني: <span className="text-slate-300">{body.trayCount}</span></p>}
+                                {body.chocolateType && <p>🍫 شوكولا: <span className="text-amber-300">{body.chocolateType}{body.chocolateFilling ? ` · ${body.chocolateFilling}` : ''}</span></p>}
+                                {body.wrappingPaperColor && <p>🗒️ لون ورق اللف: <span className="text-slate-300">{body.wrappingPaperColor}</span></p>}
+                                {body.specifications && <p>📋 المواصفات: <span className="text-slate-400">{body.specifications}</span></p>}
+                                {body.notes && <p>📝 ملاحظات: <span className="text-slate-400">{body.notes}</span></p>}
+                              </div>
+                            )}
+
+                            {/* ── SIMPLE ── */}
+                            {orderType === 'simple' && body && (
+                              <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 text-sm space-y-2 font-bold">
+                                {/* New schema: body.items array */}
+                                {Array.isArray(body.items) && body.items.length > 0 ? (
+                                  body.items.map((subItem, si) => (
+                                    <div key={si} className={`${body.items.length > 1 ? 'border-b border-slate-700/50 pb-2 last:border-0 last:pb-0' : ''}`}>
+                                      {body.items.length > 1 && <p className="text-[11px] text-slate-400 font-black mb-1">طلب فرعي {si + 1}:</p>}
+                                      {subItem.itemName && <p>🛒 الصنف: <span className="text-amber-300">{subItem.itemName}</span></p>}
+                                      {subItem.pieces && <p>📦 حبة: <span className="text-white font-black">{subItem.pieces}</span></p>}
+                                      {subItem.weight && <p>⚖️ كيلو: <span className="text-white font-black">{subItem.weight}</span></p>}
+                                      {subItem.notes && <p>📝 ملاحظات: <span className="text-slate-400">{subItem.notes}</span></p>}
+                                    </div>
+                                  ))
+                                ) : (
+                                  // Legacy simple order
+                                  <>
+                                    {body.itemName && <p>🛒 الصنف: <span className="text-amber-300">{body.itemName}</span></p>}
+                                    {body.chocolateName && <p>🍫 نوع الشوكولا: <span className="text-indigo-300">{body.chocolateName}</span></p>}
+                                    {body.pieces && <p>📦 عدد الحبات: <span className="text-white font-black">{body.pieces} حبة</span></p>}
+                                    {body.notes && <p>📝 ملاحظات: <span className="text-slate-400">{body.notes}</span></p>}
+                                  </>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
+                      );
+                    })}
 
-                        {/* Inscription / Text on Cake (CRITICAL) */}
-                        {(order.body.inscription || order.body.writeOn) && (
-                          <div className="bg-purple-950/40 border border-purple-800/60 rounded-xl p-3 shadow-inner">
-                            <span className="text-[11px] font-extrabold text-purple-300 block mb-1">
-                              ✍️ النص المطلوب كتابته على القالب {order.body.writeOn ? `(المكان: ${order.body.writeOn})` : ''}:
-                            </span>
-                            <p className="text-base font-black text-white bg-slate-950/80 p-2.5 rounded-lg border border-purple-500/30 text-center select-all">
-                              {order.body.inscription ? `« ${order.body.inscription} »` : '— بدون كتابة —'}
-                            </p>
-                          </div>
-                        )}
-
-                        {/* Photo size and source if any */}
-                        {(order.body.photoSize && order.body.photoSize !== 'بلا صورة') && (
-                          <div className="text-xs bg-slate-800/80 p-2 rounded-lg border border-slate-700 flex justify-between">
-                            <span>🖼️ الطباعة على القالب: <strong className="text-white">{order.body.photoSize}</strong></span>
-                            {order.body.photoSource && <span>المصدر: <strong className="text-slate-300">{order.body.photoSource}</strong></span>}
-                          </div>
-                        )}
-
-                        {/* Add-ons / Accessories */}
-                        {addons && addons.length > 0 && (
-                          <div>
-                            <span className="text-xs font-bold text-slate-400 block mb-1.5">🌟 إضافات واكسسوارات التزيين:</span>
-                            <div className="flex flex-wrap gap-1.5">
-                              {addons.map((label, idx) => (
-                                <span key={idx} className="bg-amber-500/10 border border-amber-500/30 text-amber-300 font-black text-xs px-2.5 py-1 rounded-lg shadow-sm">
-                                  ✓ {label}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Reference Design Photo Thumbnail */}
-                        {order.body.referencePhoto && (
-                          <div className="mt-2">
-                            <span className="text-xs font-black text-slate-300 block mb-1">📸 صورة التصميم المرجعية للتطبيق:</span>
-                            <div
-                              onClick={() => setZoomedPhoto(order.body.referencePhoto)}
-                              className="relative cursor-pointer group rounded-xl overflow-hidden border-2 border-slate-700 bg-slate-950 h-40 flex items-center justify-center"
-                            >
-                              <img src={order.body.referencePhoto} alt="مرجع التصميم" className="max-h-full max-w-full object-contain transition-transform duration-300 group-hover:scale-105" />
-                              <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <span className="bg-slate-900/90 text-white font-black text-xs px-3 py-1.5 rounded-full border border-slate-600 shadow">
-                                  🔍 اضغط لتكبير الصورة
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </>
-                    )}
-
-                    {/* Non-cake Orders Display */}
-                    {order.orderType !== 'cake' && order.body && (
-                      <div className="bg-slate-900/60 p-3.5 rounded-xl border border-slate-800 text-sm space-y-2 font-bold">
-                        {order.orderType === 'chocolate' && (
-                          <>
-                            <p>🍫 نوع الشوكولا: <span className="text-amber-300">{order.body.chocolateType || '—'}</span></p>
-                            <p>🥟 نوع الحشوة: <span className="text-indigo-300">{order.body.fillingType || '—'}</span></p>
-                            <p>⚖️ الكمية المطلوبة: <span className="text-white font-black">{order.body.quantity || '—'}</span></p>
-                          </>
-                        )}
-                        {order.orderType === 'occasion' && (
-                          <>
-                            <p>🎁 نوع الضيافة: <span className="text-amber-300">{order.body.hospitalityType || '—'}</span></p>
-                            <p>🎀 طريقة التغليف: <span className="text-indigo-300">{order.body.wrappingMethod || '—'}</span></p>
-                            <p>🔢 الكمية / الصينية: <span className="text-white font-black">{order.body.quantity || '—'}</span></p>
-                          </>
-                        )}
-                        {order.orderType === 'simple' && (
-                          <>
-                            <p>🍰 الصنف المطلوب: <span className="text-amber-300">{order.body.itemName || '—'}</span></p>
-                            <p>🍫 نوع الشوكولا: <span className="text-indigo-300">{order.body.chocolateName || '—'}</span></p>
-                            <p>📦 عدد الحبات: <span className="text-white font-black">{order.body.pieces || '—'} حبة</span></p>
-                          </>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Customer Name only for labeling tag on box */}
+                    {/* Customer Name tag */}
                     <div className="text-[11px] text-slate-500 flex justify-between pt-1">
                       <span>🏷️ اسم صاحب الطلب (للبطاقة): <strong className="text-slate-300">{order.header?.customerName || 'زبون'}</strong></span>
                       <span>تاريخ الطلب: {order.createdAt ? order.createdAt.split('T')[0] : ''}</span>
@@ -457,7 +506,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                   </div>
                 </div>
 
-                {/* Ticket Bottom Massive KDS Action Buttons */}
+                {/* Ticket Bottom KDS Action Buttons */}
                 <div className="p-3.5 bg-slate-900/95 border-t border-slate-800 mt-auto">
                   {st === 'received' && (
                     <button
@@ -493,9 +542,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
 
                   {st === 'ready' && (
                     <div className="flex items-center justify-between gap-2 bg-emerald-950/40 border border-emerald-500/30 p-2.5 rounded-xl">
-                      <span className="text-xs font-black text-emerald-300 flex items-center gap-1.5">
-                        <span>✅ تم التجهيز بالكامل والطلب بانتظار التسليم للزبون</span>
-                      </span>
+                      <span className="text-xs font-black text-emerald-300">✅ تم التجهيز بالكامل والطلب بانتظار التسليم للزبون</span>
                       <button
                         onClick={() => handleStageChange(order, 'in_progress')}
                         disabled={isUpdatingThis}

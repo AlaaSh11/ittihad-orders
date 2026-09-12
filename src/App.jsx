@@ -4,14 +4,18 @@ import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
 import OrderHistoryView from './views/OrderHistoryView';
 import FactoryView from './views/FactoryView';
+import FactoryOversightView from './views/FactoryOversightView';
 import { ENABLE_FACTORY_SYSTEM } from './constants/featureFlags';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [currentView, setCurrentView] = useState(() => {
     const u = getCurrentUser();
-    return u?.role === 'cashier' ? 'history' : u?.role === 'factory' ? 'factory' : 'form';
-  }); // 'form' | 'history' | 'factory'
+    if (u?.role === 'boss')    return 'oversight';
+    if (u?.role === 'cashier') return 'history';
+    if (u?.role === 'factory') return 'factory';
+    return 'form';
+  }); // 'form' | 'history' | 'factory' | 'oversight'
   const [editingOrder, setEditingOrder] = useState(null); // null = new order mode
 
   // Real-time Working Hours Enforcement (Checks clock every 30 seconds)
@@ -34,8 +38,10 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
-    const initialView = user?.role === 'cashier' ? 'history' : user?.role === 'factory' ? 'factory' : 'form';
-    setCurrentView(initialView);
+    if (user?.role === 'boss')    return setCurrentView('oversight');
+    if (user?.role === 'cashier') return setCurrentView('history');
+    if (user?.role === 'factory') return setCurrentView('factory');
+    setCurrentView('form');
   };
 
   const handleLogout = () => {
@@ -73,6 +79,17 @@ export default function App() {
 
   const isCashier = currentUser.role === 'cashier';
   const isFactory = currentUser.role === 'factory';
+  const isBoss    = currentUser.role === 'boss';
+
+  // Boss role: read-only production oversight — routed before all other views
+  if (isBoss || currentView === 'oversight') {
+    return (
+      <FactoryOversightView
+        currentUser={currentUser}
+        onLogout={handleLogout}
+      />
+    );
+  }
 
   // Factory role is directed exclusively to the Kitchen Display System (KDS) when feature is enabled
   if (ENABLE_FACTORY_SYSTEM && (isFactory || currentView === 'factory')) {
