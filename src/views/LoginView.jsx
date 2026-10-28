@@ -32,68 +32,56 @@ export default function LoginView({ onLogin }) {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(170deg, #0f1a2e 0%, #111d33 60%, #0d1628 100%)' }}
+      className="min-h-screen flex items-center justify-center px-4 bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 font-cairo"
+      dir="rtl"
     >
-      <div
-        className="w-full max-w-sm rounded-2xl p-10 text-center"
-        style={{
-          background: 'rgba(27,39,64,0.85)',
-          border: '1px solid rgba(255,255,255,0.10)',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.45)',
-          backdropFilter: 'blur(18px)',
-        }}
-      >
-        {/* Icon */}
-        <div className="text-5xl mb-3 select-none">🎂</div>
+      <div className="w-full max-w-sm rounded-3xl p-8 sm:p-10 text-center bg-white border border-slate-200 shadow-2xl">
+        {/* Brand Icon Badge */}
+        <div className="w-16 h-16 mx-auto mb-3 bg-red-50 rounded-2xl flex items-center justify-center text-3xl border border-red-100 shadow-sm select-none">
+          🎂
+        </div>
 
         {/* Title */}
-        <h1 className="text-2xl font-extrabold text-white mb-1 font-cairo tracking-tight">
-          طلبية قالب كايك
+        <h1 className="text-2xl font-black text-[#1a1a2e] mb-1 font-cairo tracking-tight">
+          الاتحاد للحلويات والكيك
         </h1>
-        <p className="text-sm text-white/40 mb-7 font-cairo">تسجيل الدخول للمتابعة</p>
+        <p className="text-xs font-bold text-gray-500 mb-6 font-cairo">تسجيل الدخول لمنظومة الطلبات</p>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3" noValidate>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5" noValidate>
           {/* Username */}
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder="اسم المستخدم"
-            autoComplete="username"
-            required
-            dir="rtl"
-            className="w-full rounded-xl px-4 py-3 text-sm font-cairo text-white placeholder-white/30 outline-none transition-all"
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              border: '1.5px solid rgba(255,255,255,0.13)',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = '#e5556b')}
-            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.13)')}
-          />
+          <div className="text-right">
+            <label className="block text-[11px] font-bold text-gray-600 mb-1">اسم المستخدم</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="أدخل اسم المستخدم (مثال: jawad)"
+              autoComplete="username"
+              required
+              dir="ltr"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-cairo text-gray-800 placeholder-gray-400 outline-none transition-all bg-slate-50 border-2 border-gray-200 focus:border-[#e2495c] focus:bg-white focus:ring-2 focus:ring-[#e2495c]/20"
+            />
+          </div>
 
           {/* Password */}
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="كلمة المرور"
-            autoComplete="current-password"
-            required
-            dir="rtl"
-            className="w-full rounded-xl px-4 py-3 text-sm font-cairo text-white placeholder-white/30 outline-none transition-all"
-            style={{
-              background: 'rgba(255,255,255,0.07)',
-              border: '1.5px solid rgba(255,255,255,0.13)',
-            }}
-            onFocus={(e) => (e.target.style.borderColor = '#e5556b')}
-            onBlur={(e) => (e.target.style.borderColor = 'rgba(255,255,255,0.13)')}
-            onKeyDown={(e) => e.key === 'Enter' && handleSubmit(e)}
-          />
+          <div className="text-right">
+            <label className="block text-[11px] font-bold text-gray-600 mb-1">كلمة المرور</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              required
+              dir="ltr"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-cairo text-gray-800 placeholder-gray-400 outline-none transition-all bg-slate-50 border-2 border-gray-200 focus:border-[#e2495c] focus:bg-white focus:ring-2 focus:ring-[#e2495c]/20"
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit(e)}
+            />
+          </div>
 
           {/* Error */}
           {error && (
-            <p className="text-[#e5556b] text-xs font-bold font-cairo text-center animate-fade-in">
+            <p className="text-[#e2495c] text-xs font-bold font-cairo text-center animate-fade-in bg-red-50 border border-red-200 rounded-lg p-2">
               {error}
             </p>
           )}
@@ -102,15 +90,9 @@ export default function LoginView({ onLogin }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl py-3 mt-1 text-white font-bold font-cairo text-base tracking-wide transition-all active:scale-[0.98] disabled:opacity-70"
-            style={{
-              background: 'linear-gradient(135deg, #e0405a, #e63950)',
-              boxShadow: '0 4px 18px rgba(224,64,90,0.35)',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = '')}
+            className="w-full rounded-xl py-3 mt-2 text-white font-extrabold font-cairo text-base tracking-wide transition-all hover:opacity-95 hover:shadow-lg active:scale-[0.98] disabled:opacity-60 bg-gradient-to-r from-[#e0405a] to-[#c92a42] shadow-[0_4px_16px_rgba(224,64,90,0.30)] cursor-pointer"
           >
-            {loading ? 'جاري التحقق...' : 'دخول'}
+            {loading ? 'جاري التحقق...' : 'تسجيل الدخول'}
           </button>
         </form>
       </div>

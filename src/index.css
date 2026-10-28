@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap');
 @import "tailwindcss";
 
 /* ── Base ─────────────────────────────────────────────────── */
@@ -37,7 +36,11 @@ body {
    works consistently on iOS Safari and Android Chrome whose print
    dialogs do NOT honour viewport-relative units but DO honour
    absolute mm values on elements.
-   ══════════════════════════════════════════════════════════════ */
+/* ── Screen default: hide print container on screen ── */
+.print-container {
+  display: none;
+}
+
 @media print {
   /* ── Page setup ── */
   @page {
@@ -45,13 +48,30 @@ body {
     margin: 8mm;    /* usable area: 132mm × 194mm */
   }
 
-  /* ── Visibility: hide everything, then show only .print-container ── */
-  body > * { display: none !important; }
-  body > #root { display: block !important; }
-  #root > * { display: none !important; }
+  /* ── Visibility: hide on-screen elements, display print-container ── */
+  body {
+    visibility: hidden;
+    background: transparent !important;
+  }
 
-  .print-container { display: block !important; }
-  .print\:hidden   { display: none !important; }
+  .print-container,
+  .print-container * {
+    visibility: visible;
+  }
+
+  .print-container {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    display: block !important;
+  }
+
+  .print\:hidden {
+    display: none !important;
+  }
 
   /* ── Page break between showroom and factory pages ── */
   .print-page-break {

@@ -1,0 +1,42 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper: Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Helper: Check custom claim role if present, or allow authenticated staff
+    function hasRole(role) {
+      return isAuthenticated() && (
+        request.auth.token.role == role || 
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Orders Collection: Requires authenticated staff user
+    match /orders/{orderId} {
+      allow read: if isAuthenticated();
+      
+      // Order creation requires minimum valid schema
+      allow create: if isAuthenticated() &&
+        request.resource.data.id is string &&
+        request.resource.data.header is map;
+        
+      // Order updates require authenticated user
+      allow update: if isAuthenticated();
+      
+      // Strict deletion disallowance for business audit safety
+      allow delete: if false;
+    }
+
+    // Metadata Counter: Atomic serial counter increments
+    match /metadata/{docId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+      allow delete: if false;
+    }
+  }
+}

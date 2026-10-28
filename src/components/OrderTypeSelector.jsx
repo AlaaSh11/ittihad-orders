@@ -1,4 +1,6 @@
-const ORDER_TYPES = [
+import { ENABLED_ORDER_TYPES } from '../constants/featureFlags';
+
+const ALL_ORDER_TYPES = [
   { id: 'cake',      label: 'طلب كيك' },
   { id: 'chocolate', label: 'طلب شوكولا' },
   { id: 'occasion',  label: 'طلب مناسبة' },
@@ -14,9 +16,11 @@ const ORDER_TYPES = [
  *   onChange {fn}      Called with the new type id
  */
 export default function OrderTypeSelector({ value, onChange }) {
+  const availableTypes = ALL_ORDER_TYPES.filter(t => ENABLED_ORDER_TYPES[t.id] !== false);
+
   return (
     <div className="flex rounded-lg overflow-hidden border-2 border-[#e2495c] mb-1.5 print:hidden">
-      {ORDER_TYPES.map((type) => (
+      {availableTypes.map((type) => (
         <button
           key={type.id}
           type="button"

@@ -1,5 +1,5 @@
 // Self-unregistering cleanup service worker to remove legacy v1 caches
-self.addEventListener('install', (event) => {
+self.addEventListener('install', () => {
   self.skipWaiting(); // Activate immediately
 });
 

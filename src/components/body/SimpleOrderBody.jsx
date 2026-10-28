@@ -1,8 +1,4 @@
-import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
-import TextareaField from '../ui/TextareaField';
-import { CHOCOLATE_NAMES } from '../../constants/chocolateOrderFields';
-import { CHOCOLATE_PIECES_PER_KILO } from '../../constants/chocolateLookup';
 
 /**
  * Body fields for Simple orders — Tab 4.

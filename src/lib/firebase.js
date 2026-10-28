@@ -8,6 +8,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import { 
   initializeFirestore, 
   persistentLocalCache, 
@@ -30,6 +31,9 @@ export const app = initializeApp(firebaseConfig);
 
 // Initialize Firebase Authentication
 export const auth = getAuth(app);
+
+// Initialize Firebase Storage (for reference photo uploads)
+export const storage = getStorage(app);
 
 // Initialize Firestore Database with multi-tab robust offline caching
 let dbInstance;

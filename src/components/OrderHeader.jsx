@@ -2,7 +2,6 @@ import TextField from './ui/TextField';
 import SelectField from './ui/SelectField';
 import { TIME_SLOTS, DEFAULT_TIME } from '../constants/timeSlots';
 import { DELIVERY_OPTIONS } from '../constants/deliveryOptions';
-import { RECEIVER_OPTIONS } from '../constants/receiverOptions';
 
 const ARABIC_DAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
 
@@ -24,9 +23,9 @@ function formatOrderDate(isoDate) {
  *   orderId      {string}   e.g. "CAKE-1218"
  *   currentUser  {Object}   Logged-in user object
  *   createdAt    {string}   ISO creation date for existing orders
+ *   hideOrderId  {boolean}  Hide duplicate order ID header if shown by parent
  */
-export default function OrderHeader({ data, onChange, locked = false, orderId, currentUser, createdAt }) {
-  const isAdmin = currentUser?.role === 'admin';
+export default function OrderHeader({ data, onChange, locked = false, orderId, createdAt, hideOrderId = false }) {
 
   // Auto-fill Arabic day name when delivery date changes
   const handleDeliveryDate = (val) => {
@@ -59,9 +58,11 @@ export default function OrderHeader({ data, onChange, locked = false, orderId, c
         {/* Form title — center */}
         <div className="text-center">
           <h1 className="text-xl font-extrabold text-[#2857a4] leading-tight">طلبية قالب كايك</h1>
-          <div className="text-sm font-mono font-bold text-[#333] tracking-widest mt-0.5 text-left" dir="ltr">
-            {orderId}
-          </div>
+          {!hideOrderId && orderId && (
+            <div className="text-sm font-mono font-bold text-[#333] tracking-widest mt-0.5 text-left" dir="ltr">
+              {orderId}
+            </div>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-2 mb-2">

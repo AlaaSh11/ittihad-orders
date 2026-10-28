@@ -111,6 +111,30 @@ function buildBodySummary(orderType, body) {
   return lines.join('\n');
 }
 
+function normalizeWhatsAppPhone(phone) {
+  if (!phone) return '';
+  let digits = String(phone).replace(/\D/g, '');
+  if (!digits) return '';
+
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.startsWith('961')) {
+    return digits;
+  }
+
+  if (digits.startsWith('0')) {
+    digits = digits.slice(1);
+  }
+
+  if (digits.length >= 7 && digits.length <= 8) {
+    return '961' + digits;
+  }
+
+  return digits;
+}
+
 /**
  * Build a wa.me URL with a pre-filled, URL-encoded order summary.
  *
@@ -120,8 +144,8 @@ function buildBodySummary(orderType, body) {
 export function buildWhatsAppUrl(order) {
   const { id, header, footer, items, orderType, body } = order;
 
-  // Strip phone to digits only (wa.me requires no +, spaces, or dashes)
-  const rawPhone = (header?.customerPhone ?? '').replace(/\D/g, '');
+  // Format phone number to international standard without + or spaces
+  const rawPhone = normalizeWhatsAppPhone(header?.customerPhone);
 
   const getOrderTypeLabel = (type) => ({
     cake:      'كيك',

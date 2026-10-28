@@ -26,6 +26,7 @@ export default function TextField({
   dir = 'rtl',
   className = '',
   inputClassName = '',
+  ...rest
 }) {
   return (
     <div className={`flex flex-col gap-1 ${className}`}>
@@ -44,6 +45,7 @@ export default function TextField({
         disabled={disabled}
         dir={dir}
         className={`w-full bg-[#eceafa] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30 read-only:bg-[#f0eff8] disabled:opacity-60 disabled:cursor-not-allowed ${inputClassName}`}
+        {...rest}
       />
     </div>
   );

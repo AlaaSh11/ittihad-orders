@@ -36,7 +36,6 @@ export default function OrderFooter({ data, onChange, variant = 'showroom', pric
     );
   }
 
-  const priceVal = parseFloat(data.price) || 0;
   const remainingVal = parseFloat(data.remaining) || 0;
   const depositVal = parseFloat(data.depositAmount) || 0;
 

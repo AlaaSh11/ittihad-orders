@@ -101,6 +101,9 @@ export const CHOCOLATE_PAPER_COLORS = [
   'MMC 15',
   'MMC 31',
   'MMC 29',
+  'MMC 39',
+  'MMC 41',
+  'MMC 73',
   'MMC 6',
   'MMC 10',
   'Babies 9 - Princess Pink',
@@ -116,5 +119,4 @@ export const CHOCOLATE_PAPER_COLORS = [
   'Babies 2 - Pink',
   'Babies 1 - Pink',
   'Babies 2 - Blue',
-  'Babies 3 - Blue'
 ];

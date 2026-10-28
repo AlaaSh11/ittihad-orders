@@ -6,3 +6,10 @@
 // ============================================================
 
 export const ENABLE_FACTORY_SYSTEM = true; // Set to false to hide KDS buttons and step-by-step production stages; set true to reveal when ready
+
+export const ENABLED_ORDER_TYPES = {
+  cake: true,
+  chocolate: true,
+  occasion: true,
+  simple: true,
+};

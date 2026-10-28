@@ -16,6 +16,7 @@ import {
   CAKE_ADDONS,
 } from '../../constants/cakeOrderFields';
 import { CAKE_SIZE_CHART } from '../../constants/cakeSizeChart';
+import { uploadPhotoDataUrl } from '../../lib/storageHelper';
 
 /**
  * Body fields for Cake orders — Tab 1.
@@ -226,13 +227,27 @@ export default function CakeOrderBody({ data, onChange }) {
                   type="file"
                   accept="image/*"
                   className="hidden"
-                  onChange={(e) => {
+                  onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
+
+                    // Validate file type
+                    if (!file.type || !file.type.startsWith('image/')) {
+                      alert('يرجى اختيار ملف صورة صالح (JPEG, PNG, WEBP)');
+                      return;
+                    }
+
+                    // Validate file size (max 15MB)
+                    if (file.size > 15 * 1024 * 1024) {
+                      alert('حجم الصورة كبير جداً. الحد الأقصى المسموح به هو 15 ميجابايت.');
+                      return;
+                    }
+
+                    // First create local compressed data URL for instant UI preview & offline support
                     const reader = new FileReader();
-                    reader.onload = (event) => {
+                    reader.onload = async (event) => {
                       const img = new Image();
-                      img.onload = () => {
+                      img.onload = async () => {
                         const canvas = document.createElement('canvas');
                         const maxDim = 400;
                         let w = img.width;
@@ -246,6 +261,19 @@ export default function CakeOrderBody({ data, onChange }) {
                         const ctx = canvas.getContext('2d');
                         ctx.drawImage(img, 0, 0, w, h);
                         const dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                        
+                        // Try uploading compressed image to Firebase Storage first if online
+                        try {
+                          const storageUrl = await uploadPhotoDataUrl(dataUrl);
+                          if (storageUrl) {
+                            onChange('referencePhoto', storageUrl);
+                            return;
+                          }
+                        } catch {
+                          // Storage upload error/offline fallback
+                        }
+
+                        // Fall back to compressed Base64 data URL
                         onChange('referencePhoto', dataUrl);
                       };
                       img.src = event.target.result;

@@ -17,3 +17,23 @@ export const TIME_SLOTS = [
 ];
 
 export const DEFAULT_TIME = '3:00 مساءً';
+
+/**
+ * Compare two delivery time slots chronologically.
+ * @param {string} timeA
+ * @param {string} timeB
+ * @returns {number} Negative if timeA is earlier, positive if timeB is earlier
+ */
+export function compareDeliveryTimes(timeA, timeB) {
+  if (timeA === timeB) return 0;
+  if (!timeA) return 1;
+  if (!timeB) return -1;
+  const indexA = TIME_SLOTS.indexOf(timeA);
+  const indexB = TIME_SLOTS.indexOf(timeB);
+  if (indexA !== -1 && indexB !== -1) {
+    return indexA - indexB;
+  }
+  if (indexA !== -1) return -1;
+  if (indexB !== -1) return 1;
+  return timeA.localeCompare(timeB);
+}

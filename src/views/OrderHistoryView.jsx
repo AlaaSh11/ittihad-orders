@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder } from '../lib/ordersStore';
+import { listOrdersPaginated, searchOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
+import Modal from '../components/ui/Modal';
 
 // ── Arabic labels and color mappings ────────────────────────────────────────────
 const ORDER_TYPE_LABELS = {
@@ -97,7 +98,7 @@ function bodySummary(orderType, body) {
 function fullOrderSummary(order) {
   if (Array.isArray(order.items) && order.items.length > 0) {
     return order.items
-      .map((item, idx) => `[${ORDER_TYPE_LABELS[item.orderType]}] ${bodySummary(item.orderType, item.body)}`)
+      .map((item) => `[${ORDER_TYPE_LABELS[item.orderType]}] ${bodySummary(item.orderType, item.body)}`)
       .join(' | ');
   }
   return bodySummary(order.orderType, order.body) || '—';
@@ -119,7 +120,6 @@ function OrderCard({
   onCancel,
   onUncancel,
   isUpdating,
-  currentUser,
 }) {
   const isMultiItem = Array.isArray(order.items) && order.items.length > 0;
   // Use the color of the first item, or cake if none
@@ -652,10 +652,14 @@ function EmptyState({ hasSearch, paymentFilter, showCancelledOnly }) {
 export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder, onFactory }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDocSnap, setLastDocSnap] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
+  const [modalConfig, setModalConfig] = useState(null);
 
   // Filter States
   const [paymentFilter, setPaymentFilter] = useState('unpaid'); 
@@ -666,13 +670,15 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
   const isCashier = currentUser?.role === 'cashier';
 
-  // ── Fetch orders from Firestore on mount ──
+  // ── Fetch initial paginated batch ──
   const fetchOrders = async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await listOrders(200);
-      setOrders(data);
+      const res = await listOrdersPaginated({ pageSize: 50, lastDocSnap: null });
+      setOrders(res.orders);
+      setLastDocSnap(res.lastDocSnap);
+      setHasMore(res.hasMore);
       const now = new Date();
       setLastRefreshed(now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -682,6 +688,47 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       setLoading(false);
     }
   };
+
+  // ── Load next page ──
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore || !lastDocSnap) return;
+    setLoadingMore(true);
+    try {
+      const res = await listOrdersPaginated({ pageSize: 50, lastDocSnap });
+      setOrders(prev => [...prev, ...res.orders]);
+      setLastDocSnap(res.lastDocSnap);
+      setHasMore(res.hasMore);
+    } catch (err) {
+      console.error('Load more error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // ── Handle server-side search with 300ms debounce ──
+  const handleSearchChange = (val) => {
+    setSearchQuery(val);
+    if (!val.trim()) {
+      fetchOrders();
+    }
+  };
+
+  useEffect(() => {
+    if (!searchQuery.trim()) return;
+    const timer = setTimeout(async () => {
+      if (searchQuery.trim().length >= 2) {
+        try {
+          const searchResults = await searchOrders(searchQuery.trim());
+          if (searchResults && searchResults.length > 0) {
+            setOrders(searchResults);
+          }
+        } catch (err) {
+          console.warn('Search query error:', err);
+        }
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   useEffect(() => { fetchOrders(); }, []);
 
@@ -693,30 +740,51 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       const updated = await collectDeposit(order.id, cashierName);
       const patch = updated || { depositCollected: true, depositCollectedAt: new Date().toISOString(), depositCollectedBy: cashierName };
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-    } catch (e) {
-      alert('فشل في تسجيل استلام العربون. تحقق من الإنترنت.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        title: 'خطأ',
+        message: 'فشل في تسجيل استلام العربون. تحقق من الاتصال بالإنترنت.',
+        type: 'alert',
+        onConfirm: () => setModalConfig(null),
+      });
     } finally {
       setUpdatingId(null);
     }
   };
 
   // ── UNDO Deposit collection ──
-  const handleUndoDeposit = async (order) => {
-    if (!window.confirm('هل أنت متأكد من إلغاء استلام العربون لهذا الطلب؟')) return;
-    setUpdatingId(order.id);
-    try {
-      const updated = await undoDeposit(order.id);
-      const patch = updated || { depositCollected: false, depositCollectedAt: null, depositCollectedBy: null };
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-    } catch (e) {
-      alert('فشل في تحديث حالة العربون.');
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleUndoDeposit = (order) => {
+    setModalConfig({
+      isOpen: true,
+      title: 'إلغاء استلام العربون',
+      message: 'هل أنت متأكد من رغبتك في إلغاء تسجيل استلام العربون لهذا الطلب؟',
+      isDanger: true,
+      confirmText: 'نعم، إلغاء العربون',
+      onConfirm: async () => {
+        setModalConfig(null);
+        setUpdatingId(order.id);
+        try {
+          const updated = await undoDeposit(order.id);
+          const patch = updated || { depositCollected: false, depositCollectedAt: null, depositCollectedBy: null };
+          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
+        } catch {
+          setModalConfig({
+            isOpen: true,
+            title: 'خطأ',
+            message: 'فشل في تحديث حالة العربون. تحقق من الإنترنت.',
+            type: 'alert',
+            onConfirm: () => setModalConfig(null),
+          });
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    });
   };
 
   // ── STEP 2 / Full Payment: Mark order as fully paid in database ──
-  const handleMarkPaid = async (order) => {
+  const handleMarkPaid = (order) => {
     const depositCollected = order.depositCollected === true;
     const requiresDeposit = order.footer?.depositPaid === true;
     const amountToCollect = requiresDeposit && !depositCollected
@@ -725,27 +793,38 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       ? (order.footer?.remaining || '0')
       : (order.footer?.price || '0');
 
-    if (!window.confirm(`💰 تأكيد التحصيل: هل أنت متأكد من تحصيل المبلغ المطلوب ($${amountToCollect}) وتحديد الطلبية كمُسدّدة بالكامل؟`)) {
-      return;
-    }
-
-    setUpdatingId(order.id);
-    const cashierName = currentUser?.arabicName || currentUser?.username || 'الكاشير';
-    const patch = {
-      isPaid: true,
-      paidAt: new Date().toISOString(),
-      paidBy: cashierName,
-      depositCollected: true,
-      depositCollectedBy: order.depositCollectedBy || cashierName,
-    };
-    try {
-      await updateOrder(order.id, patch);
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-    } catch (e) {
-      alert('فشل في تحديث حالة الدفع الكامل. تحقق من الإنترنت.');
-    } finally {
-      setUpdatingId(null);
-    }
+    setModalConfig({
+      isOpen: true,
+      title: '💰 تأكيد السداد الكامل',
+      message: `هل أنت متأكد من تحصيل المبلغ المطلوب ($${amountToCollect}) وتحديد الطلبية كمُسدّدة بالكامل؟`,
+      confirmText: 'تأكيد السداد بالكامل',
+      onConfirm: async () => {
+        setModalConfig(null);
+        setUpdatingId(order.id);
+        const cashierName = currentUser?.arabicName || currentUser?.username || 'الكاشير';
+        const patch = {
+          isPaid: true,
+          paidAt: new Date().toISOString(),
+          paidBy: cashierName,
+          depositCollected: true,
+          depositCollectedBy: order.depositCollectedBy || cashierName,
+        };
+        try {
+          await updateOrder(order.id, patch);
+          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
+        } catch {
+          setModalConfig({
+            isOpen: true,
+            title: 'خطأ',
+            message: 'فشل في تحديث حالة الدفع الكامل. تحقق من الإنترنت.',
+            type: 'alert',
+            onConfirm: () => setModalConfig(null),
+          });
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    });
   };
 
   // ── Update Deposit Amount ──
@@ -764,8 +843,14 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     try {
       await updateOrder(order.id, patch);
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
-    } catch (e) {
-      alert('فشل في تحديث قيمة العربون.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        title: 'خطأ',
+        message: 'فشل في تحديث قيمة العربون. تحقق من الإنترنت.',
+        type: 'alert',
+        onConfirm: () => setModalConfig(null),
+      });
     } finally {
       setUpdatingId(null);
     }
@@ -787,30 +872,51 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     try {
       await updateOrder(order.id, patch);
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
-    } catch (e) {
-      alert('فشل في تحديث السعر الإجمالي.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        title: 'خطأ',
+        message: 'فشل في تحديث السعر الإجمالي. تحقق من الإنترنت.',
+        type: 'alert',
+        onConfirm: () => setModalConfig(null),
+      });
     } finally {
       setUpdatingId(null);
     }
   };
 
   // ── Undo full paid marking ──
-  const handleUndoPaid = async (order) => {
-    if (!window.confirm('هل أنت متأكد من رغبتك في إلغاء تأكيد الدفع الكامل وإعادة الطلب إلى قائمة (غير مدفوعة)؟')) return;
-    setUpdatingId(order.id);
-    const patch = {
-      isPaid: false,
-      paidAt: null,
-      paidBy: null,
-    };
-    try {
-      await updateOrder(order.id, patch);
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-    } catch (e) {
-      alert('فشل في تحديث حالة الدفع.');
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleUndoPaid = (order) => {
+    setModalConfig({
+      isOpen: true,
+      title: 'إلغاء تأكيد السداد',
+      message: 'هل أنت متأكد من رغبتك في إلغاء تأكيد الدفع الكامل وإعادة الطلب إلى قائمة (غير مدفوعة)؟',
+      isDanger: true,
+      confirmText: 'نعم، إعادة كغير مدفوع',
+      onConfirm: async () => {
+        setModalConfig(null);
+        setUpdatingId(order.id);
+        const patch = {
+          isPaid: false,
+          paidAt: null,
+          paidBy: null,
+        };
+        try {
+          await updateOrder(order.id, patch);
+          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
+        } catch {
+          setModalConfig({
+            isOpen: true,
+            title: 'خطأ',
+            message: 'فشل في تحديث حالة الدفع.',
+            type: 'alert',
+            onConfirm: () => setModalConfig(null),
+          });
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    });
   };
 
   // ── Production Status updates ──
@@ -825,54 +931,90 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         productionStatusUpdatedAt: new Date().toISOString(),
         productionStatusUpdatedBy: staffName
       } : o));
-    } catch (e) {
-      alert('تعذر تحديث حالة التحضير بالمصنع. تأكد من الإنترنت.');
+    } catch {
+      setModalConfig({
+        isOpen: true,
+        title: 'خطأ في المصنع',
+        message: 'تعذر تحديث حالة التحضير بالمصنع. تأكد من الإنترنت.',
+        type: 'alert',
+        onConfirm: () => setModalConfig(null),
+      });
     } finally {
       setUpdatingId(null);
     }
   };
 
   // ── Order Cancellation ──
-  const handleCancelOrder = async (order) => {
-    const reason = window.prompt('سبب إلغاء الطلبية (اختياري):', 'إلغاء بناءً على طلب الزبون / تعديل موعد');
-    if (reason === null) return; // User pressed cancel on prompt
-
-    setUpdatingId(order.id);
-    const staffName = currentUser?.arabicName || currentUser?.username || 'الموظف';
-    try {
-      await cancelOrder(order.id, reason, staffName);
-      setOrders(prev => prev.map(o => o.id === order.id ? {
-        ...o,
-        isCancelled: true,
-        cancelledReason: reason || 'إلغاء بناءً على طلب الزبون',
-        cancelledBy: staffName,
-        cancelledAt: new Date().toISOString()
-      } : o));
-    } catch (e) {
-      alert('حدث خطأ أثناء محاولة إلغاء الطلب.');
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleCancelOrder = (order) => {
+    setModalConfig({
+      isOpen: true,
+      title: 'إلغاء الطلبية',
+      message: 'يرجى كتابة سبب إلغاء هذه الطلبية:',
+      type: 'prompt',
+      defaultValue: 'إلغاء بناءً على طلب الزبون / تعديل موعد',
+      placeholder: 'سبب الإلغاء...',
+      confirmText: 'تأكيد الإلغاء',
+      isDanger: true,
+      onConfirm: async (reason) => {
+        setModalConfig(null);
+        setUpdatingId(order.id);
+        const staffName = currentUser?.arabicName || currentUser?.username || 'الموظف';
+        try {
+          await cancelOrder(order.id, reason, staffName);
+          setOrders(prev => prev.map(o => o.id === order.id ? {
+            ...o,
+            isCancelled: true,
+            cancelledReason: reason || 'إلغاء بناءً على طلب الزبون',
+            cancelledBy: staffName,
+            cancelledAt: new Date().toISOString()
+          } : o));
+        } catch {
+          setModalConfig({
+            isOpen: true,
+            title: 'خطأ',
+            message: 'حدث خطأ أثناء محاولة إلغاء الطلب.',
+            type: 'alert',
+            onConfirm: () => setModalConfig(null),
+          });
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    });
   };
 
   // ── Uncancel Order ──
-  const handleUncancelOrder = async (order) => {
-    if (!window.confirm('هل تريد استعادة هذه الطلبية الملغية وإعادتها لقائمة الطلبات النشطة؟')) return;
-    setUpdatingId(order.id);
-    try {
-      await uncancelOrder(order.id);
-      setOrders(prev => prev.map(o => o.id === order.id ? {
-        ...o,
-        isCancelled: false,
-        cancelledReason: null,
-        cancelledBy: null,
-        cancelledAt: null
-      } : o));
-    } catch (e) {
-      alert('حدث خطأ أثناء استعادة الطلب.');
-    } finally {
-      setUpdatingId(null);
-    }
+  const handleUncancelOrder = (order) => {
+    setModalConfig({
+      isOpen: true,
+      title: 'استعادة الطلبية',
+      message: 'هل تريد استعادة هذه الطلبية الملغية وإعادتها لقائمة الطلبات النشطة؟',
+      confirmText: 'استعادة الطلب',
+      onConfirm: async () => {
+        setModalConfig(null);
+        setUpdatingId(order.id);
+        try {
+          await uncancelOrder(order.id);
+          setOrders(prev => prev.map(o => o.id === order.id ? {
+            ...o,
+            isCancelled: false,
+            cancelledReason: null,
+            cancelledBy: null,
+            cancelledAt: null
+          } : o));
+        } catch {
+          setModalConfig({
+            isOpen: true,
+            title: 'خطأ',
+            message: 'حدث خطأ أثناء استعادة الطلب.',
+            type: 'alert',
+            onConfirm: () => setModalConfig(null),
+          });
+        } finally {
+          setUpdatingId(null);
+        }
+      }
+    });
   };
 
   // ── Filter + search logic ──
@@ -926,11 +1068,13 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     // 5. Search
     if (searchQuery.trim()) {
       const q = searchQuery.trim().toLowerCase();
+      const normQ = normalizeArabic(searchQuery);
       result = result.filter(o => {
         const id = (o.id || '').toLowerCase();
-        const name = (o.header?.customerName || '').toLowerCase();
+        const rawName = (o.header?.customerName || '').toLowerCase();
+        const normName = normalizeArabic(o.header?.customerName || '');
         const phone = (o.header?.customerPhone || '').toLowerCase();
-        return id.includes(q) || name.includes(q) || phone.includes(q);
+        return id.includes(q) || rawName.includes(q) || normName.includes(normQ) || phone.includes(q);
       });
     }
 
@@ -981,7 +1125,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
               className="bg-amber-600 text-white text-sm font-extrabold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-amber-700 transition-colors shadow-sm flex items-center gap-1.5"
             >
               <span>👨‍🍳</span>
-              <span>شاشة المصنع (KDS)</span>
+              <span>شاشة المصنع</span>
             </button>
           )}
           <button
@@ -1109,14 +1253,14 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="🔍 بحث باسم الزبون، أو رقم الهاتف، أو رقم الطلب CAKE-1218..."
               className="w-full text-sm font-cairo border-2 border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition-all bg-gray-50/50"
               dir="rtl"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery('')}
+                onClick={() => handleSearchChange('')}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 bg-gray-200 w-6 h-6 rounded-full text-sm font-bold flex items-center justify-center leading-none"
               >
                 ✕
@@ -1171,11 +1315,11 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
           {!loading && filteredOrders.length > 0 && (
             <div className="grid grid-cols-1 gap-4">
-              {filteredOrders.map((order) => (
+              {filteredOrders.map((order, idx) => (
                 <OrderCard
-                  key={order.id}
+                  key={order.id || idx}
                   order={order}
-                  onEdit={!isCashier && onEditOrder ? onEditOrder : null}
+                  onEdit={!isCashier ? () => onEditOrder?.(order) : null}
                   onWhatsApp={handleWhatsApp}
                   onMarkPaid={handleMarkPaid}
                   onUndoPaid={handleUndoPaid}
@@ -1187,14 +1331,33 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                   onCancel={!isCashier ? handleCancelOrder : null}
                   onUncancel={!isCashier ? handleUncancelOrder : null}
                   isUpdating={updatingId === order.id}
-                  currentUser={currentUser}
                 />
               ))}
             </div>
           )}
 
+          {/* Load More Button for Pagination */}
+          {hasMore && !searchQuery && (
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-6 py-3 rounded-xl shadow-md transition-all active:scale-95 disabled:opacity-50 font-cairo flex items-center gap-2"
+              >
+                {loadingMore ? '⏳ جاري تحميل المزيد...' : '📥 تحميل المزيد من الطلبات الأقدم'}
+              </button>
+            </div>
+          )}
+
         </div>
       </div>
+
+      {modalConfig && (
+        <Modal
+          {...modalConfig}
+          onCancel={() => setModalConfig(null)}
+        />
+      )}
 
       <style>{`
         @keyframes cardIn {

@@ -1,5 +1,4 @@
 import SelectField from '../ui/SelectField';
-import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
 import {
   CHOCOLATE_TYPES,
@@ -29,6 +28,17 @@ export default function ChocolateOrderBody({ data, onChange }) {
     ? CHOCOLATE_FILLING_MAP[data.chocolateType]
     : CHOCOLATE_NAMES;
 
+  const handleTypeChange = (newType) => {
+    onChange('chocolateType', newType);
+    // If the currently selected filling is not valid for the new chocolate type, clear it
+    const validFillings = newType && CHOCOLATE_FILLING_MAP[newType]
+      ? CHOCOLATE_FILLING_MAP[newType]
+      : CHOCOLATE_NAMES;
+    if (data.fillingType && !validFillings.includes(data.fillingType)) {
+      onChange('fillingType', '');
+    }
+  };
+
   return (
     <div className="grid grid-cols-2 gap-2">
 
@@ -38,7 +48,7 @@ export default function ChocolateOrderBody({ data, onChange }) {
         id="chocolateType"
         options={CHOCOLATE_TYPES}
         value={data.chocolateType || ''}
-        onChange={(v) => onChange('chocolateType', v)}
+        onChange={handleTypeChange}
         withOther
         placeholder="اختر"
       />

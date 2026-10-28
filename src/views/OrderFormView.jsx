@@ -14,6 +14,7 @@ import CakeOrderBody from '../components/body/CakeOrderBody';
 import ChocolateOrderBody from '../components/body/ChocolateOrderBody';
 import OccasionOrderBody from '../components/body/OccasionOrderBody';
 import SimpleOrderBody from '../components/body/SimpleOrderBody';
+import Modal from '../components/ui/Modal';
 
 const BODY_COMPONENTS = {
   cake: CakeOrderBody,
@@ -69,6 +70,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   const [savedOrder, setSavedOrder] = useState(null);
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showUnsavedModal, setShowUnsavedModal] = useState(false);
 
   useEffect(() => {
     if (editingOrder) {
@@ -205,7 +207,34 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     setPriceError('');
   };
 
+  const validateDraftItem = (type, body) => {
+    if (type === 'cake') {
+      if (!body.cakeShape && !body.cakeFlavor && !body.cakeSize) {
+        return 'يرجى تحديد تفاصيل الكيك (الشكل أو النكهة أو الحجم) قبل الإضافة للسلة';
+      }
+    } else if (type === 'chocolate') {
+      if (!body.chocolateType && !body.quantity) {
+        return 'يرجى تحديد نوع الشوكولا والكمية المطلوبة قبل الإضافة للسلة';
+      }
+    } else if (type === 'occasion') {
+      if (!body.hospitalityType && !body.quantity) {
+        return 'يرجى تحديد نوع الضيافة والكمية المطلوبة قبل الإضافة للسلة';
+      }
+    } else if (type === 'simple') {
+      if (Array.isArray(body.items)) {
+        const hasValidItem = body.items.some(it => it.itemName?.trim() || it.pieces || it.weight);
+        if (!hasValidItem) {
+          return 'يرجى إدخال اسم صنف واحد على الأقل أو الكمية قبل الإضافة للسلة';
+        }
+      }
+    }
+    return null;
+  };
+
   const handleSaveEdit = () => {
+    const itemErr = validateDraftItem(draftType, draftBody);
+    if (itemErr) { setPriceError(itemErr); return; }
+
     const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
 
@@ -228,6 +257,9 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   };
 
   const handleAddToCart = () => {
+    const itemErr = validateDraftItem(draftType, draftBody);
+    if (itemErr) { setPriceError(itemErr); return; }
+
     const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
 
@@ -266,12 +298,8 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
       }
 
       // Auto-compute totals from cart items
-      const autoTotalLBP = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceLBP) || 0), 0);
       const autoTotalUSD = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceUSD) || 0), 0);
       const hasItemPrices = cartItems.some(i => i.priceLBP || i.priceUSD);
-      const priceVal = parseFloat(footerData.price) || autoTotalUSD;
-      const remainingVal = parseFloat(footerData.remaining) || 0;
-      const hasZeroPrice = priceVal === 0 && remainingVal === 0 && autoTotalUSD === 0;
 
       const finalFooter = {
         ...footerData,
@@ -303,7 +331,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           header: { ...headerData },
           items: cartItems,
           footer: finalFooter,
-          isPaid: hasZeroPrice ? true : false,
+          isPaid: false,
           depositCollected: false,
           depositCollectedAt: null,
           depositCollectedBy: null,
@@ -330,11 +358,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     window.print();
   };
 
-  const handleWhatsApp = () => {
-    if (!isSaved && !window.confirm('⚠️ تنبيه: لم تقم بحفظ هذه الطلبية بعد. هل تريد الاستمرار؟')) {
-      return;
-    }
-    
+  const executeWhatsAppSend = () => {
     // Auto-compute totals from cart items in case they click before saving
     const autoTotalUSD = cartItems.reduce((sum, item) => sum + (parseFloat(item.priceUSD) || 0), 0);
     const hasItemPrices = cartItems.some(i => i.priceLBP || i.priceUSD);
@@ -348,6 +372,14 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     };
     const url = buildWhatsAppUrl(order);
     window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleWhatsApp = () => {
+    if (!isSaved) {
+      setShowUnsavedModal(true);
+      return;
+    }
+    executeWhatsAppSend();
   };
 
   const handleNewSameCustomer = () => {
@@ -387,6 +419,8 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     const h = headerData;
     if (!h.customerName?.trim()) return false;
     if (!h.customerPhone?.trim()) return false;
+    const digits = (h.customerPhone || '').replace(/\D/g, '');
+    if (digits.length < 7) return false;
     if (!h.deliveryDate) return false;
     if (!h.deliveryTime) return false;
     if (!h.deliveryMethod) return false;
@@ -419,7 +453,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
               className="bg-amber-600 text-white text-sm font-extrabold px-3 py-1 rounded border border-amber-700 font-cairo hover:bg-amber-700 transition-colors flex items-center gap-1 shadow-sm"
             >
               <span>👨‍🍳</span>
-              <span className="hidden sm:inline">شاشة المصنع (KDS)</span>
+              <span className="hidden sm:inline">شاشة المصنع</span>
             </button>
           )}
           <button
@@ -464,7 +498,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                 setSaveError('');
                 setStep(2); 
               } else {
-                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم أولاً.');
+                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم ورقم هاتف صالح (7 أرقام على الأقل) أولاً.');
               }
             }} 
             className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 2 ? 'bg-indigo-600 text-white shadow' : step > 2 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${!isHeaderValid() && !isEditMode ? 'opacity-50' : ''}`}
@@ -478,7 +512,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                 setSaveError('');
                 setStep(3); 
               } else if (!isHeaderValid()) {
-                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم أولاً.');
+                setSaveError('⚠️ يرجى تعبئة جميع بيانات الزبون وموعد التسليم ورقم هاتف صالح (7 أرقام على الأقل) أولاً.');
               }
             }} 
             className={`flex-1 text-center py-2 rounded-lg font-bold transition-all ${step === 3 ? 'bg-indigo-600 text-white shadow' : step > 3 ? 'text-indigo-600 hover:bg-indigo-50' : 'text-gray-500 hover:bg-gray-100'} ${(cartItems.length === 0 || !isHeaderValid()) ? 'opacity-50' : ''}`}
@@ -843,6 +877,19 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
         </div>
       </div>
       
+      <Modal
+        isOpen={showUnsavedModal}
+        title="تنبيه: طلبية غير محفوظة"
+        message="لم تقم بحفظ هذه الطلبية في السجلات بعد. هل ترغب في الاستمرار وإرسال ملخص الطلبية عبر واتساب على أي حال؟"
+        confirmText="متابعة الإرسال"
+        cancelText="العودة وحفظ الطلبية"
+        onConfirm={() => {
+          setShowUnsavedModal(false);
+          executeWhatsAppSend();
+        }}
+        onCancel={() => setShowUnsavedModal(false)}
+      />
+
       <style>{`
         .animate-fadeIn {
           animation: fadeIn 0.3s ease;

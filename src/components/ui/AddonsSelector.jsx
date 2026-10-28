@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * AddonsSelector — Modal-based multi-select component for cake add-ons.
@@ -10,6 +10,15 @@ import { useState } from 'react';
  */
 export default function AddonsSelector({ options = [], selected = [], onChange }) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isModalOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') setIsModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isModalOpen]);
 
   const toggleAddon = (id) => {
     const next = selected.includes(id)
@@ -64,8 +73,12 @@ export default function AddonsSelector({ options = [], selected = [], onChange }
 
       {/* Pop-up Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+        <div 
+          onClick={() => setIsModalOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn"
+        >
           <div 
+            onClick={(e) => e.stopPropagation()}
             className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col"
             dir="rtl"
           >
@@ -95,9 +108,16 @@ export default function AddonsSelector({ options = [], selected = [], onChange }
                         : 'border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/50'
                     }`}
                   >
-                    <span className={`font-bold font-cairo text-sm ${isSelected ? 'text-[#e2495c]' : 'text-gray-700'}`}>
-                      {addon.label}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`font-bold font-cairo text-sm ${isSelected ? 'text-[#e2495c]' : 'text-gray-700'}`}>
+                        {addon.label}
+                      </span>
+                      {parseFloat(addon.price) > 0 && (
+                        <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" dir="ltr">
+                          ${addon.price}
+                        </span>
+                      )}
+                    </div>
                     <div className={`w-5 h-5 rounded flex items-center justify-center border-2 transition-colors ${
                       isSelected ? 'bg-[#e2495c] border-[#e2495c]' : 'bg-white border-gray-300'
                     }`}>

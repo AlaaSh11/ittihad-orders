@@ -100,9 +100,9 @@ function PrintHeader({ id, header, createdAt }) {
       {/* Delivery: day + date + time */}
       <Row3
         cols={[
-          <PField label="اليوم" value={header?.dayName} />,
-          <PField label="تاريخ تسليم الطلبية" value={header?.deliveryDate} dir="ltr" />,
-          <PField label="الوقت" value={header?.deliveryTime} />,
+          <PField key="day" label="اليوم" value={header?.dayName} />,
+          <PField key="date" label="تاريخ تسليم الطلبية" value={header?.deliveryDate} dir="ltr" />,
+          <PField key="time" label="الوقت" value={header?.deliveryTime} />,
         ]}
       />
 
@@ -197,13 +197,14 @@ function PrintChocolateBody({ body }) {
   );
 }
 
-// ── Compact body: Occasion (UNCONFIRMED) ─────────────────────────────────────
+// ── Compact body: Occasion ──────────────────────────────────────────────────
 
 function PrintOccasionBody({ body }) {
-  // basketCount is now stored as a string array from the multi-select
   const basketDisplay = Array.isArray(body?.basketCount)
     ? body.basketCount.join('، ')
     : (body?.basketCount || '');
+
+  const hasChocolate = body?.chocolateType || body?.chocolateFilling || body?.chocolateQuantity || body?.chocolateSource || body?.trayCount || body?.wrappingPaperColor;
 
   return (
     <div style={{ marginBottom: '1mm' }}>
@@ -217,46 +218,92 @@ function PrintOccasionBody({ body }) {
       />
       <Row2
         left={<PField label="لون الوردة" value={body?.flowerColor} />}
-        right={<PField label="عدد السلال/حواني" value={basketDisplay} />}
+        right={<PField label="عدد السلال" value={basketDisplay} />}
       />
       <Row2
         left={<PField label="عدد المحارم" value={body?.tissueCount} dir="ltr" />}
         right={<PField label="عدد الوايبس" value={body?.napkinHolderCount} dir="ltr" />}
       />
-      {/* لون ورق اللف removed — field no longer in the form */}
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="المواصفات" value={body?.specifications} isTextarea />
-      </div>
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="ملاحظات" value={body?.notes} isTextarea />
-      </div>
+      {hasChocolate && (
+        <div style={{ marginTop: '1.5mm', paddingTop: '1.5mm', borderTop: '0.5px dashed #ccc' }}>
+          <div className="pf-section-title" style={{ fontSize: '8pt', marginBottom: '1mm', color: '#4338ca' }}>تفاصيل الشوكولا:</div>
+          <Row2
+            left={<PField label="نوع الشوكولا" value={body?.chocolateType} />}
+            right={<PField label="الحشوة" value={body?.chocolateFilling} />}
+          />
+          <Row2
+            left={<PField label="كمية الشوكولا" value={body?.chocolateQuantity} dir="ltr" />}
+            right={<PField label="مصدر الشوكولا" value={body?.chocolateSource} />}
+          />
+          <Row2
+            left={<PField label="عدد الصواني" value={body?.trayCount} dir="ltr" />}
+            right={<PField label="لون ورق اللف" value={body?.wrappingPaperColor} />}
+          />
+        </div>
+      )}
+      {body?.specifications && (
+        <div style={{ marginBottom: '1.5mm', marginTop: '1mm' }}>
+          <PField label="المواصفات" value={body.specifications} isTextarea />
+        </div>
+      )}
+      {body?.notes && (
+        <div style={{ marginBottom: '1.5mm' }}>
+          <PField label="ملاحظات" value={body.notes} isTextarea />
+        </div>
+      )}
     </div>
   );
 }
 
-// ── Compact body: Simple (UNCONFIRMED) ──────────────────────────────────────
+// ── Compact body: Simple ────────────────────────────────────────────────────
 
 function PrintSimpleBody({ body }) {
-  // Compute weight from pieces + lookup ratio (same logic as SimpleOrderBody)
+  if (Array.isArray(body?.items) && body.items.length > 0) {
+    return (
+      <div style={{ marginBottom: '1mm' }}>
+        {body.items.map((item, idx) => (
+          <div key={idx} style={{ marginBottom: '1.5mm', paddingBottom: idx < body.items.length - 1 ? '1.5mm' : '0', borderBottom: idx < body.items.length - 1 ? '0.5px dashed #eee' : 'none' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '2mm', marginBottom: '1mm' }}>
+              <PField label={idx === 0 ? "الصنف" : undefined} value={item.itemName} />
+              <PField label={idx === 0 ? "عدد الحبات" : undefined} value={item.pieces} dir="ltr" />
+              <PField label={idx === 0 ? "الوزن بالكيلو" : undefined} value={item.weight} dir="ltr" />
+            </div>
+            {item.notes && (
+              <div style={{ marginBottom: '1mm' }}>
+                <PField label="ملاحظات الصنف" value={item.notes} />
+              </div>
+            )}
+          </div>
+        ))}
+        {body.notes && (
+          <div style={{ marginBottom: '1.5mm' }}>
+            <PField label="ملاحظات عامة" value={body.notes} isTextarea />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Fallback for legacy single-item simple orders
   const pieces = parseInt(body?.pieces, 10) || 0;
   const ratio = CHOCOLATE_PIECES_PER_KILO[body?.chocolateName];
-  const weightDisplay = pieces > 0 && ratio
-    ? (pieces / ratio).toFixed(3) + ' كغ'
-    : '';
+  const weightDisplay = body?.weight || (pieces > 0 && ratio ? (pieces / ratio).toFixed(3) + ' كغ' : '');
 
   return (
     <div style={{ marginBottom: '1mm' }}>
       <Row2
         left={<PField label="اسم الصنف" value={body?.itemName} />}
-        right={<PField label="اسم الشوكولا" value={body?.chocolateName} />}
+        right={body?.chocolateName ? <PField label="اسم الشوكولا" value={body?.chocolateName} /> : <div />}
       />
       <Row2
         left={<PField label="عدد الحبات" value={body?.pieces} dir="ltr" />}
         right={<PField label="الوزن بالكيلو" value={weightDisplay} dir="ltr" />}
       />
-      <div style={{ marginBottom: '1.5mm' }}>
-        <PField label="ملاحظات" value={body?.notes} isTextarea />
-      </div>
+      {body?.notes && (
+        <div style={{ marginBottom: '1.5mm' }}>
+          <PField label="ملاحظات" value={body.notes} isTextarea />
+        </div>
+      )}
     </div>
   );
 }
@@ -403,7 +450,7 @@ export default function PrintLayout({ order }) {
   if (!order) return null;
 
   return (
-    <div className="print-container" style={{ display: 'none' }}>
+    <div className="print-container">
       <PrintPage order={order} variant="showroom" />
       <PrintPage order={order} variant="factory" />
     </div>

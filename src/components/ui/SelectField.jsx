@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 /**
  * Labeled <select> with optional "أخرى" free-text fallback.
@@ -30,6 +30,19 @@ export default function SelectField({
   const OTHER = 'أخرى';
   const [customText, setCustomText] = useState('');
   const [showCustom, setShowCustom] = useState(false);
+
+  // Sync internal custom state with external value changes / resets
+  useEffect(() => {
+    if (!value || options.includes(value)) {
+      setShowCustom(false);
+      setCustomText('');
+    } else if (withOther && (value === OTHER || !options.includes(value))) {
+      setShowCustom(true);
+      if (value !== OTHER) {
+        setCustomText(value);
+      }
+    }
+  }, [value, options, withOther]);
 
   // Show custom input if explicitly in "Other" mode OR if value doesn't match any option
   const isOther = withOther && (showCustom || (value && value !== OTHER && !options.includes(value)));

@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { getCurrentUser, isWithinWorkingHours, logout } from './lib/auth';
+import { syncOfflineQueue } from './lib/ordersStore';
 import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
 import OrderHistoryView from './views/OrderHistoryView';
 import FactoryView from './views/FactoryView';
 import FactoryOversightView from './views/FactoryOversightView';
 import { ENABLE_FACTORY_SYSTEM } from './constants/featureFlags';
+import Modal from './components/ui/Modal';
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+  const [shiftAlert, setShiftAlert] = useState(false);
   const [currentView, setCurrentView] = useState(() => {
     const u = getCurrentUser();
     if (u?.role === 'boss')    return 'oversight';
@@ -17,6 +20,14 @@ export default function App() {
     return 'form';
   }); // 'form' | 'history' | 'factory' | 'oversight'
   const [editingOrder, setEditingOrder] = useState(null); // null = new order mode
+
+  // Automatic Offline Queue Sync (on app load and whenever internet reconnects)
+  useEffect(() => {
+    syncOfflineQueue();
+    const handleOnline = () => syncOfflineQueue();
+    window.addEventListener('online', handleOnline);
+    return () => window.removeEventListener('online', handleOnline);
+  }, []);
 
   // Real-time Working Hours Enforcement (Checks clock every 30 seconds)
   useEffect(() => {
@@ -27,7 +38,7 @@ export default function App() {
           setCurrentUser(null);
           setCurrentView('form');
           setEditingOrder(null);
-          alert('⏰ انتهت ساعات العمل الرسمية (10:00 مساءً). تم تسجيل الخروج تلقائياً.');
+          setShiftAlert(true);
         });
       }
     };
@@ -74,7 +85,20 @@ export default function App() {
   };
 
   if (!currentUser) {
-    return <LoginView onLogin={handleLogin} />;
+    return (
+      <>
+        <LoginView onLogin={handleLogin} />
+        <Modal
+          isOpen={shiftAlert}
+          type="alert"
+          title="⏰ ساعات العمل الرسمية"
+          message="انتهت ساعات العمل الرسمية (10:00 مساءً). تم تسجيل الخروج تلقائياً وفقاً للسياسة المعتمدة."
+          confirmText="حسناً"
+          onConfirm={() => setShiftAlert(false)}
+          onCancel={() => setShiftAlert(false)}
+        />
+      </>
+    );
   }
 
   const isCashier = currentUser.role === 'cashier';
