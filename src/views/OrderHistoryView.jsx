@@ -20,6 +20,13 @@ const ORDER_TYPE_COLORS = {
   simple:    { bg: '#d1fae5', text: '#065f46', border: '#10b981' },
 };
 
+const TYPE_ICONS = {
+  cake:      '🎂',
+  chocolate: '🍫',
+  occasion:  '🎁',
+  simple:    '🛒',
+};
+
 const FILTER_TABS = [
   { key: 'all',       label: 'كل الأصناف' },
   { key: 'cake',      label: 'كيك' },
@@ -82,16 +89,52 @@ function fmtDate(iso) {
 function bodySummary(orderType, body) {
   if (!body) return '';
   if (orderType === 'cake') {
-    return [body.cakeShape, body.cakeType, body.cakeFlavor, body.cakeSize, body.serves ? `${body.serves} شخص` : null].filter(Boolean).join(' · ');
+    return [
+      body.cakeShape,
+      body.cakeType,
+      body.cakeFlavor ? `نكهة: ${body.cakeFlavor}` : null,
+      body.cakeSize ? `حجم: ${body.cakeSize}` : null,
+      body.serves ? `${body.serves} شخص` : null,
+      body.notes ? `ملاحظات: ${body.notes}` : null,
+    ].filter(Boolean).join(' · ');
   }
   if (orderType === 'chocolate') {
-    return [body.chocolateType, body.fillingType, body.quantity].filter(Boolean).join(' · ');
+    return [
+      body.chocolateType ? `شوكولا ${body.chocolateType}` : null,
+      body.fillingType ? `حشوة ${body.fillingType}` : null,
+      body.quantity ? `${body.quantity} قطعة` : null,
+      body.wrappingMethod ? `تغليف: ${body.wrappingMethod}` : null,
+      body.specifications,
+      body.notes,
+    ].filter(Boolean).join(' · ');
   }
   if (orderType === 'occasion') {
-    return [body.hospitalityType, body.wrappingMethod, body.quantity].filter(Boolean).join(' · ');
+    return [
+      body.hospitalityType,
+      body.wrappingMethod ? `تغليف: ${body.wrappingMethod}` : null,
+      body.quantity ? `${body.quantity} قطعة/ستاند` : null,
+      body.notes,
+    ].filter(Boolean).join(' · ');
   }
   if (orderType === 'simple') {
-    return [body.itemName, body.chocolateName, body.pieces ? `${body.pieces} حبة` : null].filter(Boolean).join(' · ');
+    if (Array.isArray(body.items) && body.items.length > 0) {
+      return body.items.map(si => {
+        const parts = [
+          si.itemName,
+          si.pieces ? `${si.pieces} حبة` : null,
+          si.weight ? `${si.weight} كغ` : null,
+          si.notes ? `(${si.notes})` : null,
+        ].filter(Boolean);
+        return parts.join(' ');
+      }).join(' + ');
+    }
+    return [
+      body.itemName,
+      body.chocolateName,
+      body.pieces ? `${body.pieces} حبة` : null,
+      body.weight ? `${body.weight} كغ` : null,
+      body.notes,
+    ].filter(Boolean).join(' · ');
   }
   return '';
 }
@@ -122,6 +165,7 @@ function OrderCard({
   onUncancel,
   isUpdating,
   sameDayOrdersMap,
+  isBundled = false,
 }) {
   const isMultiItem = Array.isArray(order.items) && order.items.length > 0;
   // Use the color of the first item, or cake if none
@@ -168,9 +212,11 @@ function OrderCard({
 
   return (
     <div
-      className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden hover:shadow-md ${
+      className={`bg-white rounded-2xl border transition-all shadow-sm overflow-hidden hover:shadow-md ${
         isCancelled
           ? 'border-red-300 bg-red-50/20 opacity-90'
+          : isBundled
+          ? 'border-indigo-200 hover:border-indigo-400 bg-white'
           : sameDay
           ? 'border-indigo-300 border-r-4 border-r-indigo-600 hover:border-indigo-400'
           : 'border-gray-200 hover:border-gray-300'
@@ -178,7 +224,7 @@ function OrderCard({
       style={{ animation: 'cardIn 0.25s ease' }}
     >
       {/* Top color bar */}
-      <div style={{ height: '5px', background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }} />
+      <div style={{ height: '5px', background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : colors.border }} />
 
       <div className="p-4">
         {/* Clickable Header Area */}
@@ -204,7 +250,7 @@ function OrderCard({
               {/* Multi-order same day badge */}
               {sameDay && (
                 <span
-                  className="bg-indigo-100 text-indigo-900 border border-indigo-300 text-[11px] font-black px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 shadow-2xs"
+                  className="bg-indigo-600 text-white text-[11px] font-black px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 shadow-2xs"
                   title={`هذا الزبون لديه ${sameDay.count} طلبيات في نفس تاريخ التسليم: ${sameDay.allOrders.map(o => o.id).join(' + ')}`}
                 >
                   <span>🔗</span>
@@ -212,26 +258,28 @@ function OrderCard({
                 </span>
               )}
               
-              {/* Multiple badges if cart, else single badge */}
+              {/* Product Badges with Icons */}
               {isMultiItem ? (
                 order.items.map((item, idx) => {
                   const c = ORDER_TYPE_COLORS[item.orderType] || ORDER_TYPE_COLORS.cake;
                   return (
                     <span
                       key={idx}
-                      className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                      className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1"
                       style={{ background: c.bg, color: c.text, border: `1px solid ${c.border}` }}
                     >
-                      {ORDER_TYPE_LABELS[item.orderType] || item.orderType}
+                      <span>{TYPE_ICONS[item.orderType] || '🎂'}</span>
+                      <span>{ORDER_TYPE_LABELS[item.orderType] || item.orderType}</span>
                     </span>
                   );
                 })
               ) : (
                 <span
-                  className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo"
+                  className="text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1"
                   style={{ background: colors.bg, color: colors.text, border: `1px solid ${colors.border}` }}
                 >
-                  {ORDER_TYPE_LABELS[order.orderType] || order.orderType}
+                  <span>{TYPE_ICONS[order.orderType] || '🎂'}</span>
+                  <span>{ORDER_TYPE_LABELS[order.orderType] || order.orderType}</span>
                 </span>
               )}
 
@@ -260,29 +308,40 @@ function OrderCard({
             </div>
             
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-400 font-cairo" dir="ltr">
-                {fmtDate(order.createdAt)}
+              <span className="text-xs text-gray-500 font-bold font-cairo" dir="ltr">
+                {order.header?.deliveryDate || fmtDate(order.createdAt)}
               </span>
               <span className={`text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>▼</span>
             </div>
           </div>
 
-          {/* Row 2: Customer info */}
+          {/* Row 2: Customer info + Product Avatar */}
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold shrink-0 shadow-sm"
-              style={{ background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}
+              className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0 shadow-sm border transition-transform group-hover:scale-105"
+              style={{
+                background: colors.bg,
+                borderColor: colors.border,
+                color: colors.text,
+              }}
+              title={ORDER_TYPE_LABELS[mainType] || mainType}
             >
-              {(order.header?.customerName || '?')[0]}
+              {TYPE_ICONS[mainType] || '🎂'}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <p className="text-base font-bold text-gray-800 font-cairo truncate">
                   {order.header?.customerName || '—'}
                 </p>
+                <span
+                  className="w-5 h-5 rounded-full text-[10px] font-black flex items-center justify-center text-white shrink-0"
+                  style={{ background: isCancelled ? '#ef4444' : isPaid ? '#10b981' : requiresDeposit && !depositCollected ? '#f59e0b' : '#3b82f6' }}
+                >
+                  {(order.header?.customerName || '?')[0]}
+                </span>
                 {sameDay && (
                   <span className="text-[10px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-full">
-                    👥 طلبيتان لنفس الموعد
+                    👥 {sameDay.count} طلبيات لنفس اليوم
                   </span>
                 )}
               </div>
@@ -303,6 +362,31 @@ function OrderCard({
                     </span>
                   )}
                 </div>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3: Quick Content & Delivery Time Strip directly on card */}
+          <div className="mt-1 pt-2 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2 text-xs font-cairo bg-slate-50/70 p-2 rounded-xl">
+            <div className="flex items-center gap-1.5 text-slate-700 min-w-0 flex-1">
+              <span className="font-black text-slate-500 shrink-0">📦 المحتوى:</span>
+              <span className="font-bold text-slate-900 truncate" title={fullOrderSummary(order)}>
+                {fullOrderSummary(order)}
+              </span>
+            </div>
+            
+            <div className="flex items-center gap-2 shrink-0">
+              {order.header?.deliveryMethod && (
+                <span className="bg-white text-slate-700 border border-slate-200 px-2 py-0.5 rounded-md font-bold text-[11px] flex items-center gap-1 shadow-2xs">
+                  <span>🚚</span>
+                  <span>{order.header.deliveryMethod}</span>
+                </span>
+              )}
+              {order.header?.deliveryTime && (
+                <span className="bg-amber-100/90 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-md font-black text-[11px] flex items-center gap-1 shadow-2xs">
+                  <span>⏰</span>
+                  <span>{order.header.deliveryTime}</span>
+                </span>
               )}
             </div>
           </div>
@@ -702,6 +786,102 @@ function OrderCard({
         </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Customer Multi-Order Bundle Card ───────────────────────────────────────
+
+function CustomerBundleCard({
+  group,
+  sameDayOrdersMap,
+  isCashier,
+  onEditOrder,
+  handleWhatsApp,
+  handleMarkPaid,
+  handleUndoPaid,
+  handleCollectDeposit,
+  handleUndoDeposit,
+  handleUpdateDeposit,
+  handleUpdatePrice,
+  handleUpdateProduction,
+  handleCancelOrder,
+  handleUncancelOrder,
+  updatingId,
+}) {
+  const [isBundleExpanded, setIsBundleExpanded] = useState(true);
+
+  return (
+    <div className="bg-gradient-to-br from-indigo-50/95 via-purple-50/40 to-slate-50 border-2 border-indigo-400 rounded-3xl p-3 sm:p-4 shadow-sm space-y-3">
+      {/* Bundle Master Header */}
+      <div 
+        onClick={() => setIsBundleExpanded(!isBundleExpanded)}
+        className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-indigo-200/80 cursor-pointer select-none"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center font-black text-2xl shadow-sm">
+            👥
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-slate-900 text-lg font-cairo">{group.customerName}</span>
+              <span className="bg-indigo-600 text-white text-xs font-black px-3 py-1 rounded-full shadow-2xs">
+                {group.orders.length} طلبات متصلة لنفس موعد التسليم
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-xs text-slate-600 font-semibold mt-0.5 flex-wrap">
+              <span dir="ltr" className="font-mono text-slate-800 font-bold">{group.customerPhone || 'بدون هاتف'}</span>
+              <span>·</span>
+              <span>📅 موعد التسليم: <strong className="text-indigo-950 font-black">{group.deliveryDate}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Combined Financial Settlement Summary */}
+        <div className="flex items-center gap-3">
+          <div className="bg-white border border-indigo-200 rounded-2xl px-4 py-2 shadow-2xs flex items-center gap-4">
+            <div className="text-right">
+              <span className="text-[10px] text-slate-500 block font-bold leading-tight">إجمالي الحساب:</span>
+              <span className="text-base font-black text-slate-900">${group.totalPrice}</span>
+            </div>
+            <div className="border-r border-indigo-100 pr-4 text-right">
+              <span className="text-[10px] text-slate-500 block font-bold leading-tight">المتبقي للتحصيل:</span>
+              <span className={`text-base font-black ${group.totalRemaining > 0 ? 'text-amber-700 font-black' : 'text-green-700'}`}>
+                {group.totalRemaining > 0 ? `$${group.totalRemaining}` : '✓ مسدد بالكامل'}
+              </span>
+            </div>
+          </div>
+          <span className={`text-indigo-500 font-black text-base transition-transform ${isBundleExpanded ? 'rotate-180' : ''}`}>
+            ▼
+          </span>
+        </div>
+      </div>
+
+      {/* Orders Nested Inside Bundle */}
+      {isBundleExpanded && (
+        <div className="space-y-3 pt-1">
+          {group.orders.map((order) => (
+            <OrderCard
+              key={order.id}
+              order={order}
+              sameDayOrdersMap={sameDayOrdersMap}
+              isBundled={true}
+              onEdit={!isCashier ? () => onEditOrder?.(order) : null}
+              onWhatsApp={handleWhatsApp}
+              onMarkPaid={handleMarkPaid}
+              onUndoPaid={handleUndoPaid}
+              onCollectDeposit={handleCollectDeposit}
+              onUndoDeposit={handleUndoDeposit}
+              onUpdateDeposit={handleUpdateDeposit}
+              onUpdatePrice={handleUpdatePrice}
+              onUpdateProduction={handleUpdateProduction}
+              onCancel={!isCashier ? handleCancelOrder : null}
+              onUncancel={!isCashier ? handleUncancelOrder : null}
+              isUpdating={updatingId === order.id}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1188,6 +1368,58 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     return buildSameDayCustomerOrdersMap(orders);
   }, [orders]);
 
+  // Group same-day customer orders into bundles if 2 or more appear in the filtered list
+  const displayGroups = useMemo(() => {
+    const groups = [];
+    const processedOrderIds = new Set();
+
+    for (const order of filteredOrders) {
+      if (processedOrderIds.has(order.id)) continue;
+
+      const sameDay = getSameDayCustomerInfo(order, sameDayOrdersMap);
+      const matchingInFiltered = sameDay 
+        ? filteredOrders.filter(o => sameDay.allOrders.some(so => so.id === o.id))
+        : [order];
+
+      if (matchingInFiltered.length > 1) {
+        matchingInFiltered.forEach(o => processedOrderIds.add(o.id));
+
+        const totalPrice = matchingInFiltered.reduce((sum, o) => {
+          const p = parseFloat(o.footer?.price);
+          return !isNaN(p) && p > 0 ? sum + p : sum;
+        }, 0);
+
+        const totalRemaining = matchingInFiltered.reduce((sum, o) => {
+          if (o.isPaid) return sum;
+          const rem = parseFloat(o.footer?.remaining);
+          if (!isNaN(rem) && rem > 0) return sum + rem;
+          const p = parseFloat(o.footer?.price);
+          return !isNaN(p) && p > 0 ? sum + p : sum;
+        }, 0);
+
+        groups.push({
+          type: 'bundle',
+          key: `bundle_${order.id}_${matchingInFiltered.length}`,
+          customerName: order.header?.customerName || 'زبون',
+          customerPhone: order.header?.customerPhone || '',
+          deliveryDate: order.header?.deliveryDate || '',
+          orders: matchingInFiltered,
+          totalPrice,
+          totalRemaining,
+        });
+      } else {
+        processedOrderIds.add(order.id);
+        groups.push({
+          type: 'single',
+          key: order.id,
+          order,
+        });
+      }
+    }
+
+    return groups;
+  }, [filteredOrders, sameDayOrdersMap]);
+
   // ── Actions ──
   const handleWhatsApp = (order) => {
     const url = buildWhatsAppUrl(order);
@@ -1412,25 +1644,49 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
           {!loading && filteredOrders.length > 0 && (
             <div className="grid grid-cols-1 gap-4">
-              {filteredOrders.map((order, idx) => (
-                <OrderCard
-                  key={order.id || idx}
-                  order={order}
-                  sameDayOrdersMap={sameDayOrdersMap}
-                  onEdit={!isCashier ? () => onEditOrder?.(order) : null}
-                  onWhatsApp={handleWhatsApp}
-                  onMarkPaid={handleMarkPaid}
-                  onUndoPaid={handleUndoPaid}
-                  onCollectDeposit={handleCollectDeposit}
-                  onUndoDeposit={handleUndoDeposit}
-                  onUpdateDeposit={handleUpdateDeposit}
-                  onUpdatePrice={handleUpdatePrice}
-                  onUpdateProduction={handleUpdateProduction}
-                  onCancel={!isCashier ? handleCancelOrder : null}
-                  onUncancel={!isCashier ? handleUncancelOrder : null}
-                  isUpdating={updatingId === order.id}
-                />
-              ))}
+              {displayGroups.map((group) => {
+                if (group.type === 'bundle') {
+                  return (
+                    <CustomerBundleCard
+                      key={group.key}
+                      group={group}
+                      sameDayOrdersMap={sameDayOrdersMap}
+                      isCashier={isCashier}
+                      onEditOrder={onEditOrder}
+                      handleWhatsApp={handleWhatsApp}
+                      handleMarkPaid={handleMarkPaid}
+                      handleUndoPaid={handleUndoPaid}
+                      handleCollectDeposit={handleCollectDeposit}
+                      handleUndoDeposit={handleUndoDeposit}
+                      handleUpdateDeposit={handleUpdateDeposit}
+                      handleUpdatePrice={handleUpdatePrice}
+                      handleUpdateProduction={handleUpdateProduction}
+                      handleCancelOrder={handleCancelOrder}
+                      handleUncancelOrder={handleUncancelOrder}
+                      updatingId={updatingId}
+                    />
+                  );
+                }
+                return (
+                  <OrderCard
+                    key={group.order.id}
+                    order={group.order}
+                    sameDayOrdersMap={sameDayOrdersMap}
+                    onEdit={!isCashier ? () => onEditOrder?.(group.order) : null}
+                    onWhatsApp={handleWhatsApp}
+                    onMarkPaid={handleMarkPaid}
+                    onUndoPaid={handleUndoPaid}
+                    onCollectDeposit={handleCollectDeposit}
+                    onUndoDeposit={handleUndoDeposit}
+                    onUpdateDeposit={handleUpdateDeposit}
+                    onUpdatePrice={handleUpdatePrice}
+                    onUpdateProduction={handleUpdateProduction}
+                    onCancel={!isCashier ? handleCancelOrder : null}
+                    onUncancel={!isCashier ? handleUncancelOrder : null}
+                    isUpdating={updatingId === group.order.id}
+                  />
+                );
+              })}
             </div>
           )}
 
