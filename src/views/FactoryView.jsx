@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { listOrders, updateProductionStatus } from '../lib/ordersStore';
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
 import { compareDeliveryTimes } from '../constants/timeSlots';
+import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
 import Modal from '../components/ui/Modal';
 
 // ── Status metadata and color mapping for KDS ──────────────────────────────────
@@ -193,6 +194,11 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
     });
   }, [orders, activeTab, filterType]);
 
+  // Group same-day customer orders for kitchen awareness
+  const sameDayOrdersMap = useMemo(() => {
+    return buildSameDayCustomerOrdersMap(orders);
+  }, [orders]);
+
   // Counts for quick summary badges
   const stats = useMemo(() => {
     let received = 0, inProgress = 0, ready = 0;
@@ -368,6 +374,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
               : `${TYPE_ICONS[order.orderType] || '📦'} ${TYPE_LABELS[order.orderType] || order.orderType || 'طلب'}`;
 
             const summary = buildQuickSummary(order);
+            const sameDay = getSameDayCustomerInfo(order, sameDayOrdersMap);
 
             // Check if there is inscription
             const cakeItem = items.find(i => i.orderType === 'cake');
@@ -376,7 +383,9 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
             return (
               <div
                 key={order.id}
-                className={`rounded-2xl border-2 transition-all duration-200 overflow-hidden flex flex-col justify-between shadow-xs ${badge.border} ${badge.cardBg} hover:border-amber-400 hover:shadow-lg hover:scale-[1.01]`}
+                className={`rounded-2xl border-2 transition-all duration-200 overflow-hidden flex flex-col justify-between shadow-xs ${
+                  sameDay ? 'border-r-4 border-r-indigo-600' : ''
+                } ${badge.border} ${badge.cardBg} hover:border-amber-400 hover:shadow-lg hover:scale-[1.01]`}
               >
                 {/* Clickable Header & Summary for Full Details */}
                 <div
@@ -397,6 +406,19 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                       {typeBadgeText}
                     </span>
                   </div>
+
+                  {/* Multi-order same day notification for kitchen */}
+                  {sameDay && (
+                    <div className="bg-indigo-50 border border-indigo-200 text-indigo-900 rounded-xl px-2.5 py-1 text-[11px] font-black flex items-center justify-between gap-1 shadow-2xs">
+                      <span className="flex items-center gap-1.5">
+                        <span>🔗</span>
+                        <span>طلب {sameDay.orderNum} من {sameDay.count} لنفس الزبون اليوم</span>
+                      </span>
+                      <span className="font-mono text-indigo-700 text-[10px] font-bold">
+                        مع: {sameDay.siblingIds.join(', ')}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Delivery Schedule & Branch Banner */}
                   <div className={`p-2 rounded-xl text-xs font-black flex items-center justify-between gap-1.5 ${
@@ -541,6 +563,43 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                   </div>
                 )}
               </div>
+
+              {/* Multi-order connection banner in modal */}
+              {(() => {
+                const modalSameDay = getSameDayCustomerInfo(selectedOrder, sameDayOrdersMap);
+                if (!modalSameDay) return null;
+                return (
+                  <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-3 text-xs font-cairo shadow-2xs">
+                    <div className="flex items-center gap-1.5 font-black text-indigo-950 mb-1.5">
+                      <span>👥</span>
+                      <span>تنبيه المطبخ: هذا الزبون لديه {modalSameDay.count} طلبيات لنفس موعد التسليم ({modalSameDay.deliveryDate})</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {modalSameDay.allOrders.map((sib, i) => {
+                        const isCurrent = sib.id === selectedOrder.id;
+                        return (
+                          <div
+                            key={sib.id}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-black border flex items-center gap-2 transition-all ${
+                              isCurrent
+                                ? 'bg-indigo-700 text-white border-indigo-800 shadow-xs'
+                                : 'bg-white text-indigo-900 border-indigo-300'
+                            }`}
+                          >
+                            <span>{isCurrent ? `📍 هذا الطلب (${i + 1}):` : `🔗 طلب آخر (${i + 1}):`}</span>
+                            <span className="font-mono">{sib.id}</span>
+                            <span className={`text-[10px] ${isCurrent ? 'text-indigo-200' : 'text-indigo-700'}`}>
+                              ({(Array.isArray(sib.items) && sib.items.length > 0)
+                                ? sib.items.map(it => TYPE_LABELS[it.orderType] || it.orderType).join('+')
+                                : TYPE_LABELS[sib.orderType] || sib.orderType})
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Items Details */}
               <div className="space-y-4">

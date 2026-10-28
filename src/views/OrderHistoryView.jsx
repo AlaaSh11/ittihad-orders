@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { listOrdersPaginated, searchOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
+import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
 import Modal from '../components/ui/Modal';
 
 // ── Arabic labels and color mappings ────────────────────────────────────────────
@@ -120,6 +121,7 @@ function OrderCard({
   onCancel,
   onUncancel,
   isUpdating,
+  sameDayOrdersMap,
 }) {
   const isMultiItem = Array.isArray(order.items) && order.items.length > 0;
   // Use the color of the first item, or cake if none
@@ -137,6 +139,10 @@ function OrderCard({
     : String(Math.max(0, parseFloat(priceVal) - parseFloat(depositVal)));
 
   const currentProdStatus = order.productionStatus || 'received';
+
+  const sameDay = useMemo(() => {
+    return getSameDayCustomerInfo(order, sameDayOrdersMap);
+  }, [order, sameDayOrdersMap]);
 
   const [isEditingDeposit, setIsEditingDeposit] = useState(false);
   const [editDepositValue, setEditDepositValue] = useState(depositVal);
@@ -163,7 +169,11 @@ function OrderCard({
   return (
     <div
       className={`bg-white rounded-xl border transition-all shadow-sm overflow-hidden hover:shadow-md ${
-        isCancelled ? 'border-red-300 bg-red-50/20 opacity-90' : 'border-gray-200 hover:border-gray-300'
+        isCancelled
+          ? 'border-red-300 bg-red-50/20 opacity-90'
+          : sameDay
+          ? 'border-indigo-300 border-r-4 border-r-indigo-600 hover:border-indigo-400'
+          : 'border-gray-200 hover:border-gray-300'
       }`}
       style={{ animation: 'cardIn 0.25s ease' }}
     >
@@ -190,6 +200,17 @@ function OrderCard({
               <span className="text-sm font-bold font-cairo" dir="ltr" style={{ color: '#1a1a2e', fontFamily: "'Courier New', monospace", letterSpacing: '0.5px' }}>
                 {order.id}
               </span>
+
+              {/* Multi-order same day badge */}
+              {sameDay && (
+                <span
+                  className="bg-indigo-100 text-indigo-900 border border-indigo-300 text-[11px] font-black px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 shadow-2xs"
+                  title={`هذا الزبون لديه ${sameDay.count} طلبيات في نفس تاريخ التسليم: ${sameDay.allOrders.map(o => o.id).join(' + ')}`}
+                >
+                  <span>🔗</span>
+                  <span>طلب {sameDay.orderNum} من {sameDay.count} لنفس الزبون اليوم</span>
+                </span>
+              )}
               
               {/* Multiple badges if cart, else single badge */}
               {isMultiItem ? (
@@ -254,13 +275,35 @@ function OrderCard({
             >
               {(order.header?.customerName || '?')[0]}
             </div>
-            <div className="min-w-0">
-              <p className="text-base font-bold text-gray-800 font-cairo truncate">
-                {order.header?.customerName || '—'}
-              </p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <p className="text-base font-bold text-gray-800 font-cairo truncate">
+                  {order.header?.customerName || '—'}
+                </p>
+                {sameDay && (
+                  <span className="text-[10px] font-black bg-indigo-50 text-indigo-800 border border-indigo-200 px-2 py-0.5 rounded-full">
+                    👥 طلبيتان لنفس الموعد
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-gray-500 font-cairo" dir="ltr">
                 {order.header?.customerPhone || ''}
               </p>
+              {sameDay && (
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                    <span>🔗 الطلبيات:</span>
+                    <strong className="font-mono font-black text-indigo-950">
+                      {sameDay.allOrders.map(o => o.id).join(' · ')}
+                    </strong>
+                  </span>
+                  {sameDay.combinedRemaining > 0 && (
+                    <span className="text-[10px] font-black bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded">
+                      إجمالي المتبقي للطلبيتين: ${sameDay.combinedRemaining}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -268,6 +311,55 @@ function OrderCard({
         {/* Collapsible Content */}
         {isExpanded && (
           <div className="mt-4 pt-4 border-t border-gray-100 animate-fadeIn">
+
+        {/* Multi-order same day connected banner */}
+        {sameDay && (
+          <div className="bg-gradient-to-l from-indigo-50 via-purple-50/60 to-white border border-indigo-200 rounded-xl p-3 mb-3 text-xs font-cairo shadow-2xs">
+            <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+              <div className="flex items-center gap-1.5 font-black text-indigo-950 text-xs">
+                <span className="text-base">👥</span>
+                <span>تنبيه: هذا الزبون لديه {sameDay.count} طلبيات في نفس تاريخ التسليم ({sameDay.deliveryDate})</span>
+              </div>
+              {sameDay.combinedRemaining > 0 ? (
+                <span className="bg-amber-100 text-amber-900 border border-amber-300 font-black text-xs px-2.5 py-0.5 rounded-lg shadow-2xs">
+                  المبلغ الإجمالي المتبقي لكافة الطلبيات: ${sameDay.combinedRemaining}
+                </span>
+              ) : (
+                <span className="bg-green-100 text-green-900 border border-green-300 font-black text-xs px-2.5 py-0.5 rounded-lg">
+                  ✓ تم سداد كافة الطلبيات
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {sameDay.allOrders.map((sib, i) => {
+                const isCurrent = sib.id === order.id;
+                const typeStr = (Array.isArray(sib.items) && sib.items.length > 0)
+                  ? sib.items.map(it => ORDER_TYPE_LABELS[it.orderType] || it.orderType).join(' + ')
+                  : ORDER_TYPE_LABELS[sib.orderType] || sib.orderType || 'طلب';
+                const rem = parseFloat(sib.footer?.remaining) || 0;
+                const price = parseFloat(sib.footer?.price) || 0;
+                const dueText = sib.isPaid ? '✓ مسدد' : rem > 0 ? `متبقي: $${rem}` : price > 0 ? `مطلوب: $${price}` : 'غير محدد';
+                return (
+                  <div
+                    key={sib.id}
+                    className={`px-3 py-1.5 rounded-lg border text-xs flex items-center gap-2 transition-all ${
+                      isCurrent
+                        ? 'bg-indigo-700 text-white border-indigo-800 font-black shadow-xs'
+                        : 'bg-white text-indigo-950 border-indigo-300 font-bold hover:border-indigo-500'
+                    }`}
+                  >
+                    <span>{isCurrent ? `📍 هذا الطلب (طلب ${i + 1}):` : `🔗 الطلب الآخر (طلب ${i + 1}):`}</span>
+                    <span className="font-mono font-black">{sib.id}</span>
+                    <span className={`text-[10px] ${isCurrent ? 'text-indigo-200' : 'text-indigo-700'}`}>({typeStr})</span>
+                    <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${isCurrent ? 'bg-indigo-800 text-amber-300' : 'bg-indigo-100 text-indigo-900'}`}>
+                      {dueText}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Row 3: Body summary & Delivery specs */}
         <div className="bg-gray-50 rounded-lg p-2.5 mb-3 border border-gray-100">
@@ -1091,6 +1183,11 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     return orders.filter(o => o.isCancelled === true).length;
   }, [orders]);
 
+  // Group orders for the same customer on the same delivery date
+  const sameDayOrdersMap = useMemo(() => {
+    return buildSameDayCustomerOrdersMap(orders);
+  }, [orders]);
+
   // ── Actions ──
   const handleWhatsApp = (order) => {
     const url = buildWhatsAppUrl(order);
@@ -1319,6 +1416,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                 <OrderCard
                   key={order.id || idx}
                   order={order}
+                  sameDayOrdersMap={sameDayOrdersMap}
                   onEdit={!isCashier ? () => onEditOrder?.(order) : null}
                   onWhatsApp={handleWhatsApp}
                   onMarkPaid={handleMarkPaid}
