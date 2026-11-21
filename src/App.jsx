@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { getCurrentUser, isWithinWorkingHours, logout } from './lib/auth';
+import { useState, useEffect, useRef } from 'react';
+import { getCurrentUser, isWithinWorkingHours, logout, subscribeToAuth } from './lib/auth';
 import { syncOfflineQueue } from './lib/ordersStore';
 import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
@@ -9,17 +9,33 @@ import FactoryOversightView from './views/FactoryOversightView';
 import { ENABLE_FACTORY_SYSTEM } from './constants/featureFlags';
 import Modal from './components/ui/Modal';
 
+function defaultViewFor(user) {
+  if (user?.role === 'boss')    return 'oversight';
+  if (user?.role === 'cashier') return 'history';
+  if (user?.role === 'factory') return 'factory';
+  return 'form';
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [shiftAlert, setShiftAlert] = useState(false);
-  const [currentView, setCurrentView] = useState(() => {
-    const u = getCurrentUser();
-    if (u?.role === 'boss')    return 'oversight';
-    if (u?.role === 'cashier') return 'history';
-    if (u?.role === 'factory') return 'factory';
-    return 'form';
-  }); // 'form' | 'history' | 'factory' | 'oversight'
+  const [currentView, setCurrentView] = useState(() => defaultViewFor(getCurrentUser())); // 'form' | 'history' | 'factory' | 'oversight'
   const [editingOrder, setEditingOrder] = useState(null); // null = new order mode
+
+  // Re-validate the cached session against Firebase Auth: the role always
+  // comes from the verified ID token claim, never from localStorage.
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  useEffect(() => {
+    return subscribeToAuth((verifiedUser) => {
+      const prev = currentUserRef.current;
+      if (prev?.username !== verifiedUser?.username || prev?.role !== verifiedUser?.role) {
+        setCurrentView(defaultViewFor(verifiedUser));
+        setEditingOrder(null);
+      }
+      setCurrentUser(verifiedUser);
+    });
+  }, []);
 
   // Automatic Offline Queue Sync (on app load and whenever internet reconnects)
   useEffect(() => {
@@ -49,13 +65,12 @@ export default function App() {
 
   const handleLogin = (user) => {
     setCurrentUser(user);
-    if (user?.role === 'boss')    return setCurrentView('oversight');
-    if (user?.role === 'cashier') return setCurrentView('history');
-    if (user?.role === 'factory') return setCurrentView('factory');
-    setCurrentView('form');
+    setCurrentView(defaultViewFor(user));
   };
 
   const handleLogout = () => {
+    // Always end the Firebase session too (some views only call onLogout).
+    logout();
     setCurrentUser(null);
     setCurrentView('form');
     setEditingOrder(null);

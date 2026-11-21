@@ -4,6 +4,12 @@
 // Note: Plaintext passwords have been removed. Secure authentication
 // is handled via Firebase Auth (Email/Password). This mapping provides
 // display metadata and Arabic names for logged in usernames.
+//
+// SECURITY: the `role` values here are NOT trusted by the app. They are
+// the source list for `npm run set-roles` (scripts/set-roles.mjs), which
+// writes them as Firebase Auth custom claims. The app and the Firestore /
+// Storage rules read the role only from that verified claim. After editing
+// a role here, re-run the script.
 // ============================================================
 
 export const USER_METADATA = {
@@ -20,10 +26,10 @@ export const USER_METADATA = {
   admin:    { username: 'admin',    arabicName: 'ADMIN',               role: 'admin'   },
 };
 
-// Default fallback metadata for newly added Firebase users not explicitly listed above
+// Default display metadata for Firebase users not explicitly listed above.
+// (Such users get NO role — and no access — until a role claim is assigned.)
 export const DEFAULT_METADATA = {
   arabicName: 'موظف',
-  role: 'staff',
 };
 
 // Role definitions

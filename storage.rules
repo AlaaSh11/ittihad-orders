@@ -1,0 +1,51 @@
+rules_version = '2';
+
+// ============================================================
+// Firebase Storage rules — order reference photos.
+// Same role claim + working-hours model as firestore.rules.
+// ============================================================
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function role() {
+      return request.auth != null ? request.auth.token.get('role', '') : '';
+    }
+    function isRole(r) { return role() == r; }
+    function hasAnyRole() {
+      return role() in ['admin', 'boss', 'staff', 'cashier', 'factory'];
+    }
+
+    // 07:00–22:00 Asia/Beirut (UTC+2, UTC+3 during DST). See firestore.rules.
+    function onOrAfterLastSunday(t) {
+      return t.day() - (t.dayOfWeek() % 7) >= 25;
+    }
+    function isBeirutDst(t) {
+      return (t.month() > 3 && t.month() < 10)
+        || (t.month() == 3 && onOrAfterLastSunday(t))
+        || (t.month() == 10 && !onOrAfterLastSunday(t));
+    }
+    function beirutHour() {
+      return (request.time.hours() + (isBeirutDst(request.time) ? 3 : 2)) % 24;
+    }
+    function inWorkingHours() {
+      return isRole('admin') || isRole('boss')
+        || (beirutHour() >= 7 && beirutHour() < 22);
+    }
+
+    match /orders/photos/{fileName} {
+      allow read: if hasAnyRole() && inWorkingHours();
+
+      // New uploads only: images up to 20 MB, by order-taking roles.
+      allow create: if (isRole('admin') || isRole('staff'))
+        && inWorkingHours()
+        && resource == null
+        && request.resource.size < 20 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow update, delete: if false;
+    }
+
+    // Everything else is closed by default.
+  }
+}

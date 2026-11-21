@@ -1,16 +1,52 @@
-# React + Vite
+# Ittihad Orders
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Order-taking app for الاتحاد للحلويات والكيك — React + Vite + Firebase (Auth, Firestore, Storage).
 
-Currently, two official plugins are available:
+```bash
+npm install
+npm run dev        # local dev server
+npm run build      # production build → dist/
+npm run lint
+npm run test:rules # security-rules tests in the Firebase emulators (needs Java)
+```
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Roles & security
 
-## React Compiler
+Access is enforced by `firestore.rules` and `storage.rules` using the Firebase Auth
+custom claim **`role`**. The app also reads the role only from that verified claim.
+An account without a role claim has **no access**.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Role      | Can do                                                                 | Hours (Beirut) |
+|-----------|------------------------------------------------------------------------|----------------|
+| `admin`   | everything (no deletes)                                                | 24/7           |
+| `boss`    | read-only oversight                                                    | 24/7           |
+| `staff`   | create/edit orders, payments, cancel, production status, upload photos | 07:00–22:00    |
+| `cashier` | payment, deposit, price (`footer`) and production-status fields        | 07:00–22:00    |
+| `factory` | production-status fields only                                          | 07:00–22:00    |
 
-## Expanding the Oxlint configuration
+The order-serial counter (`metadata/orderCounter`) can only go up by exactly 1. Orders can never be deleted.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+### Assigning roles
+
+Roles are listed in `src/constants/authConfig.js` (`USER_METADATA`). To push them to Firebase as claims:
+
+1. Firebase console → Project settings → Service accounts → **Generate new private key**.
+   Keep the file outside the repo and never commit it.
+2. Preview the changes, then apply them:
+   ```bash
+   GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json npm run set-roles -- --dry-run
+   GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json npm run set-roles
+   ```
+   The script also lists Firebase accounts that are missing from `authConfig.js`. Those accounts will be locked out.
+
+Run it again whenever you add a user or change a role. Users get the new role at their next login.
+
+### Deploy order (important)
+
+Assign the role claims **before** deploying the new rules, or every user will be locked out:
+
+```bash
+npm run set-roles                                    # 1. claims
+npm run build && firebase deploy --only hosting      # 2. app that reads claims
+firebase deploy --only firestore:rules,storage       # 3. rules
+```
