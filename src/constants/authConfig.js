@@ -21,6 +21,8 @@ export const USER_METADATA = {
   cashier1: { username: 'cashier1', arabicName: 'كاشير 1 (الصندوق)',    role: 'cashier' },
   cashier2: { username: 'cashier2', arabicName: 'كاشير 2 (الصندوق)',    role: 'cashier' },
   factory:  { username: 'factory',  arabicName: 'شاشة المصنع (المطبخ)', role: 'factory' },
+  packing:    { username: 'packing',    arabicName: 'التغليف',           role: 'factory' },
+  packingwed: { username: 'packingwed', arabicName: 'تغليف الأعراس',     role: 'factory' },
   orders:   { username: 'orders',   arabicName: 'المدير / المراقب',    role: 'boss'    },
   boss:     { username: 'boss',     arabicName: 'المدير / المراقب',    role: 'boss'    },
   admin:    { username: 'admin',    arabicName: 'ADMIN',               role: 'admin'   },
