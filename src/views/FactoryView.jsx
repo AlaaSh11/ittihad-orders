@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrders, updateProductionStatus } from '../lib/ordersStore';
+import { listOrders, listOpenOrders, mergeOrders, updateProductionStatus } from '../lib/ordersStore';
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
 import { compareDeliveryTimes } from '../constants/timeSlots';
 import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
@@ -111,7 +111,8 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const data = await listOrders(300);
+      const [recent, open] = await Promise.all([listOrders(300), listOpenOrders()]);
+      const data = mergeOrders(recent, open);
       const activeData = data.filter(o => !o.isCancelled);
       setOrders(activeData);
       const now = new Date();

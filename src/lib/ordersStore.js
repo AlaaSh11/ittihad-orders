@@ -123,6 +123,7 @@ export async function syncOfflineQueue() {
         // 3. Attach search fields
         const searchFields = buildSearchFields(order);
         const orderToStore = { ...order, ...searchFields, syncedAt: new Date().toISOString() };
+        if (oldId !== order.id) orderToStore.offlineTempId = oldId;
 
         // 4. Save to Firestore
         const orderRef = doc(db, ORDERS_COLLECTION, orderToStore.id);
@@ -236,6 +237,34 @@ export async function getOrdersByVisit(customerVisitId) {
 export async function updateOrder(id, patch) {
   const updatedAt = new Date().toISOString();
 
+  // Keep the search index in sync when the customer details change.
+  if (patch.header) {
+    const { searchName, searchPhone } = buildSearchFields({ header: patch.header });
+    patch = { ...patch, searchName, searchPhone };
+  }
+
+  // Order saved offline with a temporary ID.
+  if (id.startsWith('TEMP-OFFLINE-')) {
+    const queue = readOfflineQueue();
+    const pending = queue.find((q) => q.type === 'CREATE' && q.order?.id === id);
+    if (pending) {
+      // Not synced yet: amend the queued creation instead of queueing an update
+      // for a document that does not exist.
+      pending.order = { ...pending.order, ...patch, updatedAt };
+      writeOfflineQueue(queue);
+      const localOrders = readLocalOrders();
+      const i = localOrders.findIndex((o) => o.id === id);
+      if (i !== -1) {
+        localOrders[i] = pending.order;
+        writeLocalOrders(localOrders);
+      }
+      return normalizeOrder(pending.order);
+    }
+    // Already synced: switch to the official ID it received.
+    const synced = readLocalOrders().find((o) => o.offlineTempId === id);
+    if (synced) id = synced.id;
+  }
+
   // Update local
   const localOrders = readLocalOrders();
   const idx = localOrders.findIndex((o) => o.id === id);
@@ -327,6 +356,53 @@ export async function listOrders(maxCount = 150) {
   } catch {
     return [...readLocalOrders()].reverse().slice(0, maxCount).map(normalizeOrder);
   }
+}
+
+/** YYYY-MM-DD in the device's local time zone (the shop's). */
+function localDateString(offsetDays = 0) {
+  const d = new Date();
+  d.setDate(d.getDate() + offsetDays);
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
+/**
+ * Orders that still need attention regardless of when they were created:
+ * every order due from `daysBack` days ago onwards (e.g. weddings booked
+ * months ahead) and, optionally, every unpaid order. The "latest N" lists
+ * alone miss these once enough newer orders have been entered.
+ * @param {{ includeUnpaid?: boolean, daysBack?: number }} options
+ * @returns {Promise<Object[]>}
+ */
+export async function listOpenOrders({ includeUnpaid = false, daysBack = 3 } = {}) {
+  const queries = [
+    query(collection(db, ORDERS_COLLECTION), where('header.deliveryDate', '>=', localDateString(-daysBack))),
+  ];
+  if (includeUnpaid) {
+    queries.push(query(collection(db, ORDERS_COLLECTION), where('isPaid', '==', false)));
+  }
+  const results = await Promise.allSettled(queries.map((q) => getDocs(q)));
+  const lists = results.map((r) => {
+    if (r.status === 'fulfilled') return r.value.docs.map((d) => normalizeOrder(d.data()));
+    console.warn('Open-orders query failed:', r.reason?.message);
+    return [];
+  });
+  return mergeOrders(...lists);
+}
+
+/**
+ * Merge order lists, dropping duplicates (first occurrence wins),
+ * newest created first.
+ */
+export function mergeOrders(...lists) {
+  const map = new Map();
+  for (const list of lists) {
+    for (const o of list || []) {
+      if (o?.id && !map.has(o.id)) map.set(o.id, o);
+    }
+  }
+  return [...map.values()].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 }
 
 /**

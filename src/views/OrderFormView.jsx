@@ -322,6 +322,15 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
         setSavedOrder(fullOrder);
         setOrderId(editingOrder.id);
         setIsSaved(true);
+      } else if (savedOrder) {
+        // Already saved in this session: update that order instead of
+        // creating a duplicate with a new number.
+        const patch = { header: { ...headerData }, items: cartItems, footer: finalFooter };
+        const updated = await updateOrder(savedOrder.id, patch);
+        const fullOrder = updated || { ...savedOrder, ...patch, updatedAt: new Date().toISOString() };
+        setSavedOrder(fullOrder);
+        setOrderId(fullOrder.id);
+        setIsSaved(true);
       } else {
         const newId = await getNextOrderId();
         const order = {
@@ -846,7 +855,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                         : 'bg-[#1a1a2e] hover:bg-[#2d2d4a]'
                   }`}
                 >
-                  {saving ? '⏳ الحفظ...' : isSaved && !isEditMode ? '📝 طلب جديد' : isEditMode ? '💾 حفظ التعديلات' : 'حفظ الطلبية الإجمالية'}
+                  {saving ? '⏳ الحفظ...' : isSaved && !isEditMode ? '📝 طلب جديد' : (isEditMode || savedOrder) ? '💾 حفظ التعديلات' : 'حفظ الطلبية الإجمالية'}
                 </button>
 
                 <button

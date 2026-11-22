@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { listOrders } from "../lib/ordersStore";
+import { listOrders, listOpenOrders, mergeOrders } from "../lib/ordersStore";
 import { CAKE_ADDONS } from "../constants/cakeOrderFields";
 import { compareDeliveryTimes } from "../constants/timeSlots";
 
@@ -411,7 +411,8 @@ export default function FactoryOversightView({ currentUser, onLogout }) {
   const fetchOrders = async () => {
     setLoading(true);
     try {
-      const data = await listOrders(200);
+      const [recent, open] = await Promise.all([listOrders(200), listOpenOrders()]);
+      const data = mergeOrders(recent, open);
       setOrders(data);
       setLastUpdated(new Date().toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }));
     } catch (err) {

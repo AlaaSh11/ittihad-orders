@@ -2,12 +2,13 @@
 // (starts the Firestore + Storage emulators via firebase-tools; needs Java)
 import { test, before, after, beforeEach } from 'node:test';
 import { readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
 import {
   initializeTestEnvironment,
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where } from 'firebase/firestore';
 import { ref, uploadString, getBytes } from 'firebase/storage';
 
 const PROJECT_ID = 'demo-ittihad-orders';
@@ -130,6 +131,36 @@ test('staff can edit orders but not identity fields', async () => {
   await assertFails(updateDoc(ref_, { createdAt: 'forged' }));
   await assertFails(updateDoc(ref_, { customerVisitId: 'other' }));
   await assertFails(updateDoc(ref_, { id: 'CAKE-1' }));
+});
+
+test('open-orders queries (upcoming by delivery date, unpaid) are allowed for every role', async () => {
+  const upcoming = (r) => getDocs(query(collection(db(r), 'orders'), where('header.deliveryDate', '>=', '2026-11-19')));
+  const unpaid = (r) => getDocs(query(collection(db(r), 'orders'), where('isPaid', '==', false)));
+  for (const r of ['admin', 'boss']) {
+    const snap = await assertSucceeds(upcoming(r));
+    assert.deepEqual(snap.docs.map((d) => d.id), ['CAKE-2000']);
+    assert.equal((await assertSucceeds(unpaid(r))).size, 1);
+  }
+  for (const r of ['staff', 'cashier', 'factory']) {
+    await duringHours(upcoming(r));
+    await duringHours(unpaid(r));
+  }
+  await assertFails(upcoming(null));
+});
+
+test('re-saving an order from the form updates it (header, items, footer, search fields)', async () => {
+  const patch = {
+    header: { customerName: 'new name', deliveryDate: '2026-11-23' },
+    items: [{ id: 'i1', orderType: 'cake', body: {} }],
+    footer: { price: '60', depositAmount: '10', remaining: '50' },
+    searchName: 'new name',
+    searchPhone: '96170000000',
+    updatedAt: '2026-11-21T11:00:00.000Z',
+  };
+  await assertSucceeds(updateDoc(doc(db('admin'), 'orders/CAKE-2000'), patch));
+  await duringHours(updateDoc(doc(db('staff'), 'orders/CAKE-2000'), patch));
+  await assertFails(updateDoc(doc(db('cashier'), 'orders/CAKE-2000'), patch));
+  await assertFails(updateDoc(doc(db('factory'), 'orders/CAKE-2000'), patch));
 });
 
 test('nobody can delete orders', async () => {

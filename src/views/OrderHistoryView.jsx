@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrdersPaginated, searchOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
+import { listOrdersPaginated, listOpenOrders, mergeOrders, searchOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
 import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
@@ -947,8 +947,13 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     setLoading(true);
     setError('');
     try {
-      const res = await listOrdersPaginated({ pageSize: 50, lastDocSnap: null });
-      setOrders(res.orders);
+      // First page of recent orders + every unpaid / upcoming order,
+      // so the payment and date filters never miss older orders.
+      const [res, open] = await Promise.all([
+        listOrdersPaginated({ pageSize: 50, lastDocSnap: null }),
+        listOpenOrders({ includeUnpaid: true }),
+      ]);
+      setOrders(mergeOrders(res.orders, open));
       setLastDocSnap(res.lastDocSnap);
       setHasMore(res.hasMore);
       const now = new Date();
@@ -967,7 +972,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     setLoadingMore(true);
     try {
       const res = await listOrdersPaginated({ pageSize: 50, lastDocSnap });
-      setOrders(prev => [...prev, ...res.orders]);
+      setOrders(prev => mergeOrders(prev, res.orders));
       setLastDocSnap(res.lastDocSnap);
       setHasMore(res.hasMore);
     } catch (err) {
