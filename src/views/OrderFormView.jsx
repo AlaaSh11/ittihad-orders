@@ -701,7 +701,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
                 {/* Per-item price — Two fields */}
                 <div className="mt-4 max-w-sm mx-auto">
                   <label className="text-xs font-bold text-[#1a1a2e] font-cairo block text-center mb-1.5">
-                    سعر الصنف <span className="text-[10px] font-normal text-gray-400">(اختياري)</span>
+                    سعر الصنف <span className="text-[10px] font-normal text-[#e2495c]">(إلزامي)</span>
                   </label>
                   <div className="flex items-center gap-2">
                     <div className={`flex-1 flex bg-[#eceafa] border-2 rounded overflow-hidden focus-within:ring-1 transition-colors ${

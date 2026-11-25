@@ -1,5 +1,5 @@
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
-import { CHOCOLATE_PIECES_PER_KILO } from '../constants/chocolateLookup';
+import { CHOCOLATE_PIECES_PER_KILO, describeChocolateQuantity } from '../constants/chocolateLookup';
 
 /**
  * PrintLayout — A5 compact print output
@@ -207,7 +207,7 @@ function PrintChocolateBody({ body }) {
       />
       <Row2
         left={<PField label="اسم الشوكولا" value={body?.fillingType} />}
-        right={<PField label="الكمية" value={body?.quantity} dir="ltr" />}
+        right={<PField label="الكمية" value={describeChocolateQuantity(body?.fillingType, body?.chocolateType, body?.quantity)} />}
       />
       <div style={{ marginBottom: '1.5mm' }}>
         <PField label="المواصفات" value={body?.specifications} isTextarea />
@@ -254,7 +254,7 @@ function PrintOccasionBody({ body }) {
             right={<PField label="الحشوة" value={body?.chocolateFilling} />}
           />
           <Row2
-            left={<PField label="كمية الشوكولا" value={body?.chocolateQuantity} dir="ltr" />}
+            left={<PField label="كمية الشوكولا" value={describeChocolateQuantity(body?.chocolateFilling, body?.chocolateType, body?.chocolateQuantity)} />}
             right={<PField label="مصدر الشوكولا" value={body?.chocolateSource} />}
           />
           <Row2

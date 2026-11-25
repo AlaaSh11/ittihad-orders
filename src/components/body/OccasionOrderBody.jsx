@@ -1,4 +1,5 @@
 import SelectField from '../ui/SelectField';
+import { chocolateEstimate } from '../../constants/chocolateLookup';
 import TextField from '../ui/TextField';
 import TextareaField from '../ui/TextareaField';
 import {
@@ -179,6 +180,9 @@ export default function OccasionOrderBody({ data, onChange }) {
           onChange={(e) => onChange('chocolateQuantity', e.target.value)}
           className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
         />
+        {chocolateEstimate(data.chocolateFilling, data.chocolateQuantity, chocolateQuantityUnit) && (
+          <span className="text-[11px] font-bold text-indigo-700 text-center" dir="rtl">{chocolateEstimate(data.chocolateFilling, data.chocolateQuantity, chocolateQuantityUnit)}</span>
+        )}
       </div>
 
       {/* مصدر الشوكولا */}

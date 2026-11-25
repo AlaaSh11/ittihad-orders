@@ -9,6 +9,7 @@ import {
   DEFAULT_CHOCOLATE_UNIT,
   CHOCOLATE_PAPER_COLORS,
 } from '../../constants/chocolateOrderFields';
+import { chocolateEstimate } from '../../constants/chocolateLookup';
 
 /**
  * Body fields for Chocolate orders — Tab 3.
@@ -93,6 +94,9 @@ export default function ChocolateOrderBody({ data, onChange }) {
           onChange={(e) => onChange('quantity', e.target.value)}
           className="w-full bg-[#eceafa] border-2 border-[#e2495c] rounded px-2 py-1.5 text-sm font-cairo text-[#222] focus:outline-none focus:border-[#b01c2e] focus:ring-1 focus:ring-[#e2495c]/30"
         />
+        {chocolateEstimate(data.fillingType, data.quantity, quantityUnit) && (
+          <span className="text-[11px] font-bold text-indigo-700 text-center" dir="rtl">{chocolateEstimate(data.fillingType, data.quantity, quantityUnit)}</span>
+        )}
       </div>
 
       {/* المواصفات */}

@@ -7,7 +7,7 @@
 // ============================================================
 
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
-import { CHOCOLATE_PIECES_PER_KILO } from '../constants/chocolateLookup';
+import { CHOCOLATE_PIECES_PER_KILO, describeChocolateQuantity } from '../constants/chocolateLookup';
 
 /**
  * Format a date string (YYYY-MM-DD) to a readable Arabic format.
@@ -58,7 +58,7 @@ function buildBodySummary(orderType, body) {
     if (body.chocolateType) lines.push(`نوع الشوكولا: ${body.chocolateType}`);
     if (body.wrappingMethod) lines.push(`لون الورق: ${body.wrappingMethod}`);   // was "طريقة التغليف"
     if (body.fillingType)   lines.push(`اسم الشوكولا: ${body.fillingType}`);   // was "نوع الحشو"
-    if (body.quantity)      lines.push(`الكمية: ${body.quantity}`);
+    if (body.quantity)      lines.push(`الكمية: ${describeChocolateQuantity(body.fillingType, body.chocolateType, body.quantity)}`);
     if (body.specifications) lines.push(`المواصفات: ${body.specifications}`);
     if (body.notes)         lines.push(`ملاحظات: ${body.notes}`);
 
@@ -73,7 +73,7 @@ function buildBodySummary(orderType, body) {
     if (body.napkinHolderCount) lines.push(`عدد الوايبس: ${body.napkinHolderCount}`);
     if (body.chocolateType)     lines.push(`نوع الشوكولا: ${body.chocolateType}`);
     if (body.chocolateFilling)  lines.push(`الحشوة: ${body.chocolateFilling}`);
-    if (body.chocolateQuantity) lines.push(`كمية الشوكولا: ${body.chocolateQuantity}`);
+    if (body.chocolateQuantity) lines.push(`كمية الشوكولا: ${describeChocolateQuantity(body.chocolateFilling, body.chocolateType, body.chocolateQuantity)}`);
     if (body.chocolateSource)   lines.push(`مصدر الشوكولا: ${body.chocolateSource}`);
     if (body.trayCount)         lines.push(`عدد الصواني: ${body.trayCount}`);
     if (body.wrappingPaperColor) lines.push(`لون ورق اللف: ${body.wrappingPaperColor}`);
