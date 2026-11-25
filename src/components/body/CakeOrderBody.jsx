@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import SelectField from '../ui/SelectField';
 import TextField from '../ui/TextField';
+import TextareaField from '../ui/TextareaField';
 import AddonsSelector from '../ui/AddonsSelector';
 import {
   CAKE_SHAPES, DEFAULT_CAKE_SHAPE,
@@ -137,6 +138,28 @@ export default function CakeOrderBody({ data, onChange }) {
         placeholder="اختر"
       />
 
+      {/* جنب القالب — side colour */}
+      <SelectField
+        label="جنب القالب"
+        id="cakeSideColor"
+        options={CAKE_COLORS}
+        value={data.cakeSideColor || ''}
+        onChange={(v) => onChange('cakeSideColor', v)}
+        withOther
+        placeholder="اختر"
+      />
+
+      {/* وجه القالب — top colour */}
+      <SelectField
+        label="وجه القالب"
+        id="cakeTopColor"
+        options={CAKE_COLORS}
+        value={data.cakeTopColor || ''}
+        onChange={(v) => onChange('cakeTopColor', v)}
+        withOther
+        placeholder="اختر"
+      />
+
       {/* الكتابة على */}
       <SelectField
         label="الكتابة على"
@@ -168,6 +191,16 @@ export default function CakeOrderBody({ data, onChange }) {
         withOther
       />
 
+      {/* العمر — e.g. for birthday cakes */}
+      <TextField
+        label="العمر"
+        id="age"
+        type="number"
+        dir="ltr"
+        value={data.age || ''}
+        onChange={(v) => onChange('age', v)}
+      />
+
       {/* الكتابة — free text with datalist presets */}
       <div className="flex flex-col gap-1 col-span-2">
         <label htmlFor="inscription" className="text-xs font-bold text-[#1a1a2e] text-center">
@@ -190,12 +223,23 @@ export default function CakeOrderBody({ data, onChange }) {
         </datalist>
       </div>
 
-      {/* إضافات / اكسسوارات — chip multi-select (replaces ملاحظات textarea) */}
+      {/* إضافات / اكسسوارات — chip multi-select */}
       <AddonsSelector
         options={CAKE_ADDONS}
         selected={Array.isArray(data.addons) ? data.addons : []}
         onChange={(ids) => onChange('addons', ids)}
       />
+
+      {/* ملاحظات — special requests */}
+      <div className="col-span-2">
+        <TextareaField
+          label="ملاحظات"
+          id="cakeNotes"
+          value={data.notes || ''}
+          onChange={(v) => onChange('notes', v)}
+          rows={2}
+        />
+      </div>
 
       {/* ── Reference Photo Attachment ── */}
       <div className="col-span-2 mt-2 bg-purple-50/60 border border-purple-200 rounded-xl p-3">

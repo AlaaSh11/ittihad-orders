@@ -179,10 +179,24 @@ function PrintCakeBody({ body }) {
       <div style={{ marginBottom: '1.5mm' }}>
         <PField label="الكتابة" value={body?.inscription} />
       </div>
-      {/* Add-ons — replaces old ملاحظات textarea */}
+      {(body?.cakeSideColor || body?.cakeTopColor || body?.age) && (
+        <Row3
+          cols={[
+            <PField key="side" label="جنب القالب" value={body?.cakeSideColor} />,
+            <PField key="top" label="وجه القالب" value={body?.cakeTopColor} />,
+            <PField key="age" label="العمر" value={body?.age} dir="ltr" />,
+          ]}
+        />
+      )}
+      {/* Add-ons */}
       {selectedAddons && (
         <div style={{ marginBottom: '1.5mm' }}>
           <PField label="إضافات / اكسسوارات" value={selectedAddons} />
+        </div>
+      )}
+      {body?.notes && (
+        <div style={{ marginBottom: '1.5mm' }}>
+          <PField label="ملاحظات" value={body.notes} isTextarea />
         </div>
       )}
       {/* Reference Photo */}

@@ -22,7 +22,7 @@ export const HOSPITALITY_TYPES = [
 export const OCCASION_WRAPPING_COLORS = [
   'ذهبي',
   'أبيض',
-  'برنز',
+  'بوردو',
 ];
 
 // طريقة التغليف/اللف — Wrapping method

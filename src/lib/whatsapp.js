@@ -42,6 +42,9 @@ function buildBodySummary(orderType, body) {
     if (body.cakeSize)    lines.push(`القياس: ${body.cakeSize}`);
     if (body.serves)      lines.push(`عدد الأشخاص: ${body.serves}`);
     if (body.cakeColor)   lines.push(`لون القالب: ${body.cakeColor}`);
+    if (body.cakeSideColor) lines.push(`جنب القالب: ${body.cakeSideColor}`);
+    if (body.cakeTopColor)  lines.push(`وجه القالب: ${body.cakeTopColor}`);
+    if (body.age)         lines.push(`العمر: ${body.age}`);
     if (body.inscription) lines.push(`الكتابة: ${body.inscription}`);
     if (body.photoSize)   lines.push(`حجم الصورة: ${body.photoSize}`);
     if (body.photoSource) lines.push(`مصدر الصورة: ${body.photoSource}`);
@@ -53,6 +56,7 @@ function buildBodySummary(orderType, body) {
         .join('، ');
       if (addonLabels) lines.push(`إضافات / اكسسوارات: ${addonLabels}`);
     }
+    if (body.notes)       lines.push(`ملاحظات: ${body.notes}`);
 
   } else if (orderType === 'chocolate') {
     if (body.chocolateType) lines.push(`نوع الشوكولا: ${body.chocolateType}`);

@@ -635,8 +635,18 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
                               <div><span className="text-slate-500 text-[11px]">النكهة: </span><span className="font-extrabold text-slate-900">{body.cakeFlavor || '—'}</span></div>
                               <div><span className="text-slate-500 text-[11px]">الحشوة: </span><span className="font-extrabold text-indigo-700">{body.cakeFilling || '—'}</span></div>
                               <div><span className="text-slate-500 text-[11px]">لون القالب: </span><span className="font-extrabold text-pink-700">{body.cakeColor || '—'}</span></div>
+                              {body.cakeSideColor && <div><span className="text-slate-500 text-[11px]">جنب القالب: </span><span className="font-extrabold text-pink-700">{body.cakeSideColor}</span></div>}
+                              {body.cakeTopColor && <div><span className="text-slate-500 text-[11px]">وجه القالب: </span><span className="font-extrabold text-pink-700">{body.cakeTopColor}</span></div>}
+                              {body.age && <div><span className="text-slate-500 text-[11px]">العمر: </span><span className="font-extrabold text-slate-900">{body.age}</span></div>}
                             </div>
                           </div>
+
+                          {body.notes && (
+                            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
+                              <span className="text-[11px] font-extrabold text-amber-800 block mb-1">📝 ملاحظات:</span>
+                              <p className="text-sm font-bold text-amber-950 whitespace-pre-line">{body.notes}</p>
+                            </div>
+                          )}
 
                           {(body.inscription || body.writeOn) && (
                             <div className="bg-purple-50 border border-purple-200 rounded-xl p-3 shadow-inner">
