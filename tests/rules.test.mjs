@@ -8,18 +8,32 @@ import {
   assertSucceeds,
   assertFails,
 } from '@firebase/rules-unit-testing';
-import { doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, query, where } from 'firebase/firestore';
+import {
+  doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, collection, collectionGroup, query, where,
+  writeBatch, serverTimestamp,
+} from 'firebase/firestore';
 import { ref, uploadString, getBytes } from 'firebase/storage';
 
 const PROJECT_ID = 'demo-ittihad-orders';
 let env;
+
+function loadRules(file) {
+  const src = readFileSync(file, 'utf8');
+  if (!IGNORE_HOURS) return src;
+  const out = src.replace('(beirutHour() >= 7 && beirutHour() < 22)', 'true');
+  if (out === src) throw new Error(`working-hours check not found in ${file}`);
+  return out;
+}
 
 // The rules restrict non-admin/boss roles to 07:00–22:00 Beirut time and the
 // emulator uses the real clock, so expectations for those roles depend on now.
 const beirutHour = parseInt(
   new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Beirut', hour: '2-digit', hourCycle: 'h23' })
     .formatToParts(new Date()).find((p) => p.type === 'hour').value, 10);
-const IN_HOURS = beirutHour >= 7 && beirutHour < 22;
+// TEST_IGNORE_HOURS=1 swaps the working-hours check for `true` so the
+// staff/cashier/factory cases can be exercised at any time of day.
+const IGNORE_HOURS = process.env.TEST_IGNORE_HOURS === '1';
+const IN_HOURS = IGNORE_HOURS || (beirutHour >= 7 && beirutHour < 22);
 const duringHours = (p) => (IN_HOURS ? assertSucceeds(p) : assertFails(p));
 console.log(`Beirut hour ${beirutHour} → ${IN_HOURS ? 'inside' : 'outside'} working hours`);
 
@@ -45,25 +59,72 @@ const ORDER = {
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT_ID,
-    firestore: { rules: readFileSync('firestore.rules', 'utf8') },
-    storage: { rules: readFileSync('storage.rules', 'utf8') },
+    firestore: { rules: loadRules('firestore.rules') },
+    storage: { rules: loadRules('storage.rules') },
   });
 });
 after(() => env?.cleanup());
 beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (ctx) => {
-    await setDoc(doc(ctx.firestore(), 'orders/CAKE-2000'), ORDER);
+    await setDoc(doc(ctx.firestore(), 'orders/CAKE-2000'), { ...ORDER, lastChangeId: 'seed' });
     await setDoc(doc(ctx.firestore(), 'metadata/orderCounter'), { serial: 2000 });
   });
 });
+
+
+// ── Helpers: writes the way the app does them (order + history in one batch)
+const historyEntry = (r, fields, action = 'update') => ({
+  action,
+  fields,
+  changes: [],
+  uid: `uid-${r ?? 'norole'}`,
+  by: String(r),
+  role: r ?? '',
+  at: serverTimestamp(),
+  clientAt: 'x',
+  day: '2026-11-21',
+});
+async function adminRead(path) {
+  let ids;
+  await env.withSecurityRulesDisabled(async (ctx) => {
+    ids = (await getDocs(collection(ctx.firestore(), path))).docs.map((d) => d.id);
+  });
+  return ids;
+}
+const topFields = (patch) => [...new Set(Object.keys(patch).map((k) => k.split('.')[0]))];
+
+function change(r, id, patch, { fields = topFields(patch), payment, history = {} } = {}) {
+  const fs = db(r);
+  const b = writeBatch(fs);
+  const h = doc(collection(fs, 'orders', id, 'history'));
+  b.update(doc(fs, 'orders', id), { ...patch, lastChangeId: h.id });
+  b.set(h, { ...historyEntry(r, fields), ...history });
+  if (payment) {
+    b.set(doc(collection(fs, 'payments')), {
+      orderId: id, changeId: h.id, kind: 'final', usd: 0, lbp: 0,
+      uid: `uid-${r}`, by: String(r), at: serverTimestamp(), clientAt: 'x', day: '2026-11-21',
+      customerName: 'test', ...payment,
+    });
+  }
+  return b.commit();
+}
+
+function create(r, order) {
+  const fs = db(r);
+  const b = writeBatch(fs);
+  const h = doc(collection(fs, 'orders', order.id, 'history'));
+  b.set(doc(fs, 'orders', order.id), { ...order, lastChangeId: h.id });
+  b.set(h, historyEntry(r, [], 'create'));
+  return b.commit();
+}
 
 // ── Identity ──────────────────────────────────────────────────
 test('unauthenticated and role-less users have no access', async () => {
   for (const r of [null, undefined]) {
     await assertFails(getDoc(doc(db(r), 'orders/CAKE-2000')));
-    await assertFails(setDoc(doc(db(r), 'orders/CAKE-2001'), { ...ORDER, id: 'CAKE-2001' }));
-    await assertFails(updateDoc(doc(db(r), 'orders/CAKE-2000'), { isPaid: true }));
+    await assertFails(create(r, { ...ORDER, id: 'CAKE-2001' }));
+    await assertFails(change(r, 'CAKE-2000', { isPaid: true }));
     await assertFails(updateDoc(doc(db(r), 'metadata/orderCounter'), { serial: 2001 }));
   }
 });
@@ -84,53 +145,129 @@ test('admin and boss can read at any time; others during working hours', async (
 // ── Create ────────────────────────────────────────────────────
 test('only staff/admin can create orders, with a valid id', async () => {
   const o = { ...ORDER, id: 'CAKE-2001' };
-  await assertSucceeds(setDoc(doc(db('admin'), 'orders/CAKE-2001'), o));
+  await assertSucceeds(create('admin', o));
   await env.clearFirestore();
-  await duringHours(setDoc(doc(db('staff'), 'orders/CAKE-2001'), o));
+  await duringHours(create('staff', o));
   for (const r of ['cashier', 'factory', 'boss']) {
-    await assertFails(setDoc(doc(db(r), 'orders/CAKE-2002'), { ...ORDER, id: 'CAKE-2002' }));
+    await assertFails(create(r, { ...ORDER, id: 'CAKE-2002' }));
   }
 });
 
 test('order id must match document id and CAKE-<n> format', async () => {
-  await assertFails(setDoc(doc(db('admin'), 'orders/CAKE-2003'), { ...ORDER, id: 'CAKE-9999' }));
-  await assertFails(setDoc(doc(db('admin'), 'orders/TEMP-OFFLINE-1'), { ...ORDER, id: 'TEMP-OFFLINE-1' }));
-  await assertFails(setDoc(doc(db('admin'), 'orders/CAKE-2004'), { ...ORDER, id: 'CAKE-2004', productionStatus: 'hacked' }));
+  const fs = db('admin');
+  const b = writeBatch(fs);
+  const h = doc(collection(fs, 'orders', 'CAKE-2003', 'history'));
+  b.set(doc(fs, 'orders', 'CAKE-2003'), { ...ORDER, id: 'CAKE-9999', lastChangeId: h.id });
+  b.set(h, historyEntry('admin', [], 'create'));
+  await assertFails(b.commit());
+  await assertFails(create('admin', { ...ORDER, id: 'TEMP-OFFLINE-1' }));
+  await assertFails(create('admin', { ...ORDER, id: 'CAKE-2004', productionStatus: 'hacked' }));
+});
+
+// ── Change history ────────────────────────────────────────────
+test('order writes without a history entry are rejected', async () => {
+  await assertFails(setDoc(doc(db('admin'), 'orders/CAKE-2005'), { ...ORDER, id: 'CAKE-2005' }));
+  await assertFails(setDoc(doc(db('admin'), 'orders/CAKE-2005'), { ...ORDER, id: 'CAKE-2005', lastChangeId: 'nope' }));
+  await assertFails(updateDoc(doc(db('admin'), 'orders/CAKE-2000'), { isPaid: true }));
+  // Re-using the previous change id does not count as a new entry.
+  await assertFails(updateDoc(doc(db('admin'), 'orders/CAKE-2000'), { isPaid: true, lastChangeId: 'seed' }));
+});
+
+test('history must list every changed field, with the real author and server time', async () => {
+  // Hides the price change
+  await assertFails(change('admin', 'CAKE-2000', { 'footer.price': '1', isPaid: true }, { fields: ['isPaid'] }));
+  // Claims to be someone else
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { history: { uid: 'uid-staff' } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { history: { role: 'staff' } }));
+  // Back-dated
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { history: { at: new Date(2020, 0, 1) } }));
+  // Extra fields in the entry
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { history: { note: 'x' } }));
+  // Listing extra (unchanged) fields is fine
+  await assertSucceeds(change('admin', 'CAKE-2000', { isPaid: true }, { fields: ['isPaid', 'footer'] }));
+});
+
+test('history is append-only, cannot be created on its own, and only admin reads it', async () => {
+  await assertSucceeds(change('admin', 'CAKE-2000', { isPaid: true }));
+  const id = (await adminRead('orders/CAKE-2000/history'))[0];
+  const path = `orders/CAKE-2000/history/${id}`;
+  await assertSucceeds(getDoc(doc(db('admin'), path)));
+  await assertSucceeds(getDocs(query(collectionGroup(db('admin'), 'history'), where('day', '==', '2026-11-21'))));
+  for (const r of ['boss', 'staff', 'cashier', 'factory']) {
+    await assertFails(getDoc(doc(db(r), path)));
+    await assertFails(getDocs(query(collectionGroup(db(r), 'history'), where('day', '==', '2026-11-21'))));
+  }
+  await assertFails(updateDoc(doc(db('admin'), path), { by: 'someone else' }));
+  await assertFails(deleteDoc(doc(db('admin'), path)));
+  await assertFails(setDoc(doc(db('admin'), 'orders/CAKE-2000/history/standalone'), historyEntry('admin', [])));
+});
+
+// ── Payments ──────────────────────────────────────────────────
+test('payments: recorded with the order change, USD and/or LBP, admin-only read, append-only', async () => {
+  const paid = { isPaid: true, paidAt: 'x', paidBy: 'c', finalPayment: { usd: 20, lbp: 900000 }, updatedAt: 'x' };
+  await assertSucceeds(change('admin', 'CAKE-2000', paid, { payment: { usd: 20, lbp: 900000 } }));
+  await duringHours(change('cashier', 'CAKE-2000', { ...paid, paidBy: 'c2' }, { payment: { usd: 0, lbp: 4500000 } }));
+  await duringHours(change('cashier', 'CAKE-2000', { isPaid: false, finalPayment: null }, { payment: { kind: 'void', usd: -20, lbp: -900000 } }));
+
+  // invalid amounts / kinds
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { usd: 0, lbp: 0 } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { usd: -5, lbp: 0 } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { kind: 'void', usd: 5, lbp: 0 } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { kind: 'gift', usd: 5, lbp: 0 } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { usd: '5', lbp: 0 } }));
+  // forged author or time
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { usd: 5, uid: 'uid-cashier' } }));
+  await assertFails(change('admin', 'CAKE-2000', { isPaid: true }, { payment: { usd: 5, at: new Date(2020, 0, 1) } }));
+  // factory and boss cannot record money
+  await assertFails(change('factory', 'CAKE-2000', { productionStatus: 'ready' }, { payment: { usd: 5 } }));
+  await assertFails(change('boss', 'CAKE-2000', { isPaid: true }, { payment: { usd: 5 } }));
+  // a payment on its own (no order change) is rejected
+  await assertFails(setDoc(doc(db('admin'), 'payments/p1'), {
+    orderId: 'CAKE-2000', changeId: 'seed', kind: 'final', usd: 5, lbp: 0,
+    uid: 'uid-admin', by: 'a', at: serverTimestamp(), clientAt: 'x', day: '2026-11-21', customerName: 't',
+  }));
+
+  const ids = await adminRead('payments');
+  assert.equal(ids.length, IN_HOURS ? 3 : 1);
+  const path = `payments/${ids[0]}`;
+  await assertSucceeds(getDocs(query(collection(db('admin'), 'payments'), where('day', '==', '2026-11-21'))));
+  for (const r of ['boss', 'staff', 'cashier', 'factory']) {
+    await assertFails(getDoc(doc(db(r), path)));
+  }
+  await assertFails(updateDoc(doc(db('admin'), path), { usd: 1 }));
+  await assertFails(deleteDoc(doc(db('admin'), path)));
 });
 
 // ── Update ────────────────────────────────────────────────────
 test('boss is read-only', async () => {
-  await assertFails(updateDoc(doc(db('boss'), 'orders/CAKE-2000'), { productionStatus: 'ready' }));
+  await assertFails(change('boss', 'CAKE-2000', { productionStatus: 'ready' }));
 });
 
 test('factory can only change production status', async () => {
-  const ref_ = doc(db('factory'), 'orders/CAKE-2000');
-  await duringHours(updateDoc(ref_, {
+  await duringHours(change('factory', 'CAKE-2000', {
     productionStatus: 'in_progress',
     productionStatusUpdatedAt: 'x',
     productionStatusUpdatedBy: 'factory',
     updatedAt: 'x',
   }));
-  await assertFails(updateDoc(ref_, { isPaid: true, updatedAt: 'x' }));
-  await assertFails(updateDoc(ref_, { 'footer.price': '1' }));
-  await assertFails(updateDoc(ref_, { productionStatus: 'bogus' }));
+  await assertFails(change('factory', 'CAKE-2000', { isPaid: true, updatedAt: 'x' }));
+  await assertFails(change('factory', 'CAKE-2000', { 'footer.price': '1' }));
+  await assertFails(change('factory', 'CAKE-2000', { productionStatus: 'bogus' }));
 });
 
 test('cashier can handle payments/footer/production but not order content or cancellation', async () => {
-  const ref_ = doc(db('cashier'), 'orders/CAKE-2000');
-  await duringHours(updateDoc(ref_, { isPaid: true, paidAt: 'x', paidBy: 'c', depositCollected: true, depositCollectedBy: 'c', updatedAt: 'x' }));
-  await duringHours(updateDoc(ref_, { footer: { ...ORDER.footer, price: '60', remaining: '50' }, updatedAt: 'x' }));
-  await assertFails(updateDoc(ref_, { header: { customerName: 'changed' } }));
-  await assertFails(updateDoc(ref_, { items: [{ x: 1 }] }));
-  await assertFails(updateDoc(ref_, { isCancelled: true }));
+  await duringHours(change('cashier', 'CAKE-2000', { isPaid: true, paidAt: 'x', paidBy: 'c', depositCollected: true, depositCollectedBy: 'c', updatedAt: 'x' }));
+  await duringHours(change('cashier', 'CAKE-2000', { footer: { ...ORDER.footer, price: '60', remaining: '50' }, updatedAt: 'x' }));
+  await assertFails(change('cashier', 'CAKE-2000', { header: { customerName: 'changed' } }));
+  await assertFails(change('cashier', 'CAKE-2000', { items: [{ x: 1 }] }));
+  await assertFails(change('cashier', 'CAKE-2000', { isCancelled: true }));
 });
 
 test('staff can edit orders but not identity fields', async () => {
-  const ref_ = doc(db('staff'), 'orders/CAKE-2000');
-  await duringHours(updateDoc(ref_, { header: { customerName: 'edited' }, isCancelled: true, updatedAt: 'x' }));
-  await assertFails(updateDoc(ref_, { createdAt: 'forged' }));
-  await assertFails(updateDoc(ref_, { customerVisitId: 'other' }));
-  await assertFails(updateDoc(ref_, { id: 'CAKE-1' }));
+  await duringHours(change('staff', 'CAKE-2000', { header: { customerName: 'edited' }, isCancelled: true, updatedAt: 'x' }));
+  await assertFails(change('staff', 'CAKE-2000', { createdAt: 'forged' }));
+  await assertFails(change('staff', 'CAKE-2000', { customerVisitId: 'other' }));
+  await assertFails(change('staff', 'CAKE-2000', { id: 'CAKE-1' }));
 });
 
 test('open-orders queries (upcoming by delivery date, unpaid) are allowed for every role', async () => {
@@ -157,10 +294,11 @@ test('re-saving an order from the form updates it (header, items, footer, search
     searchPhone: '96170000000',
     updatedAt: '2026-11-21T11:00:00.000Z',
   };
-  await assertSucceeds(updateDoc(doc(db('admin'), 'orders/CAKE-2000'), patch));
-  await duringHours(updateDoc(doc(db('staff'), 'orders/CAKE-2000'), patch));
-  await assertFails(updateDoc(doc(db('cashier'), 'orders/CAKE-2000'), patch));
-  await assertFails(updateDoc(doc(db('factory'), 'orders/CAKE-2000'), patch));
+  await assertSucceeds(change('admin', 'CAKE-2000', patch));
+  await duringHours(change('staff', 'CAKE-2000', { ...patch, updatedAt: 'y' }));
+  const other = { ...patch, header: { customerName: 'third name' }, items: [], updatedAt: 'z' };
+  await assertFails(change('cashier', 'CAKE-2000', other));
+  await assertFails(change('factory', 'CAKE-2000', other));
 });
 
 test('nobody can delete orders', async () => {

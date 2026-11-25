@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrdersPaginated, listOpenOrders, mergeOrders, searchOrders, updateOrder, collectDeposit, undoDeposit, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
+import { listOrdersPaginated, listOpenOrders, mergeOrders, searchOrders, updateOrder, collectDeposit, undoDeposit, markPaid, undoPaid, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
+import PaymentModal from '../components/ui/PaymentModal';
+import { formatMixed } from '../constants/currency';
+import OrderHistoryModal from '../components/OrderHistoryModal';
 import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
 import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
@@ -152,6 +155,7 @@ function fullOrderSummary(order) {
 
 function OrderCard({
   order,
+  onShowHistory,
   onEdit,
   onWhatsApp,
   onMarkPaid,
@@ -288,11 +292,12 @@ function OrderCard({
                 isPaid ? (
                   <span className="bg-green-100 text-green-800 border border-green-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
                     ✓ تم السداد بالكامل ({order.paidBy || 'الصندوق'})
+                    {order.finalPayment && <span dir="ltr">· {formatMixed(order.finalPayment.usd, order.finalPayment.lbp)}</span>}
                   </span>
                 ) : requiresDeposit ? (
                   depositCollected ? (
                     <span className="bg-blue-100 text-blue-800 border border-blue-300 text-[11px] font-bold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1">
-                      ✓ عربون مُحَصَّل (${depositVal}) · باقي عند التسليم: ${remainingVal}
+                      ✓ عربون مُحَصَّل ({order.depositPayment ? <span dir="ltr">{formatMixed(order.depositPayment.usd, order.depositPayment.lbp)}</span> : `$${depositVal}`}) · باقي عند التسليم: ${remainingVal}
                     </span>
                   ) : (
                     <span className="bg-amber-100 text-amber-800 border border-amber-400 text-[11px] font-extrabold px-2.5 py-0.5 rounded-full font-cairo flex items-center gap-1 animate-pulse">
@@ -782,6 +787,16 @@ function OrderCard({
           >
             💬 إرسال واتساب للزبون
           </button>
+
+          {/* Change history — admin only */}
+          {onShowHistory && (
+            <button
+              onClick={() => onShowHistory(order)}
+              className="border border-slate-400 text-slate-700 hover:bg-slate-50 text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1"
+            >
+              🕘 سجل التعديلات
+            </button>
+          )}
         </div>
         </div>
         )}
@@ -794,6 +809,7 @@ function OrderCard({
 
 function CustomerBundleCard({
   group,
+  onShowHistory,
   sameDayOrdersMap,
   isCashier,
   onEditOrder,
@@ -866,6 +882,7 @@ function CustomerBundleCard({
               order={order}
               sameDayOrdersMap={sameDayOrdersMap}
               isBundled={true}
+              onShowHistory={onShowHistory}
               onEdit={!isCashier ? () => onEditOrder?.(order) : null}
               onWhatsApp={handleWhatsApp}
               onMarkPaid={handleMarkPaid}
@@ -921,7 +938,7 @@ function EmptyState({ hasSearch, paymentFilter, showCancelledOnly }) {
 
 // ── Main Export ───────────────────────────────────────────────────────────────
 
-export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder, onFactory }) {
+export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, onEditOrder, onFactory, onReport }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -932,6 +949,8 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
   const [searchQuery, setSearchQuery] = useState('');
   const [lastRefreshed, setLastRefreshed] = useState(null);
   const [modalConfig, setModalConfig] = useState(null);
+  const [paymentConfig, setPaymentConfig] = useState(null); // { title, expectedUSD, onConfirm }
+  const [historyOrder, setHistoryOrder] = useState(null);   // order whose change history is open (admin)
 
   // Filter States
   const [paymentFilter, setPaymentFilter] = useState('unpaid'); 
@@ -941,6 +960,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
   const [showCancelledOnly, setShowCancelledOnly] = useState(false);
 
   const isCashier = currentUser?.role === 'cashier';
+  const isAdmin = currentUser?.role === 'admin';
 
   // ── Fetch initial paginated batch ──
   const fetchOrders = async () => {
@@ -1009,25 +1029,41 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
   useEffect(() => { fetchOrders(); }, []);
 
-  // ── STEP 1: Mark deposit as collected by Cashier ──
-  const handleCollectDeposit = async (order) => {
-    setUpdatingId(order.id);
-    const cashierName = currentUser?.arabicName || currentUser?.username || 'الكاشير';
-    try {
-      const updated = await collectDeposit(order.id, cashierName);
-      const patch = updated || { depositCollected: true, depositCollectedAt: new Date().toISOString(), depositCollectedBy: cashierName };
-      setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-    } catch {
-      setModalConfig({
-        isOpen: true,
-        title: 'خطأ',
-        message: 'فشل في تسجيل استلام العربون. تحقق من الاتصال بالإنترنت.',
-        type: 'alert',
-        onConfirm: () => setModalConfig(null),
-      });
-    } finally {
-      setUpdatingId(null);
-    }
+  // Replace one order in the list with its latest version.
+  const replaceOrder = (id, next) => setOrders(prev => prev.map(o => o.id === id ? { ...o, ...next } : o));
+
+  const showError = (message) => setModalConfig({
+    isOpen: true,
+    title: 'خطأ',
+    message,
+    type: 'alert',
+    onConfirm: () => setModalConfig(null),
+  });
+
+  // ── STEP 1: Cashier collects the deposit (enters $ / L.L received) ──
+  const handleCollectDeposit = (order) => {
+    setPaymentConfig({
+      title: `💵 استلام العربون — ${order.id}`,
+      expectedUSD: parseFloat(order.footer?.depositAmount) || 0,
+      onConfirm: async (amounts) => {
+        setPaymentConfig(null);
+        setUpdatingId(order.id);
+        const cashierName = currentUser?.arabicName || currentUser?.username || 'الكاشير';
+        try {
+          const updated = await collectDeposit(order, amounts, cashierName);
+          replaceOrder(order.id, updated || {
+            depositCollected: true,
+            depositCollectedAt: new Date().toISOString(),
+            depositCollectedBy: cashierName,
+            depositPayment: { ...amounts, by: cashierName },
+          });
+        } catch {
+          showError('فشل في تسجيل استلام العربون. تحقق من الاتصال بالإنترنت.');
+        } finally {
+          setUpdatingId(null);
+        }
+      },
+    });
   };
 
   // ── UNDO Deposit collection ──
@@ -1042,9 +1078,8 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         setModalConfig(null);
         setUpdatingId(order.id);
         try {
-          const updated = await undoDeposit(order.id);
-          const patch = updated || { depositCollected: false, depositCollectedAt: null, depositCollectedBy: null };
-          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
+          const updated = await undoDeposit(order);
+          replaceOrder(order.id, updated || { depositCollected: false, depositCollectedAt: null, depositCollectedBy: null, depositPayment: null });
         } catch {
           setModalConfig({
             isOpen: true,
@@ -1060,7 +1095,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     });
   };
 
-  // ── STEP 2 / Full Payment: Mark order as fully paid in database ──
+  // ── STEP 2 / Full Payment: cashier enters what was received, order marked paid ──
   const handleMarkPaid = (order) => {
     const depositCollected = order.depositCollected === true;
     const requiresDeposit = order.footer?.depositPaid === true;
@@ -1070,37 +1105,29 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       ? (order.footer?.remaining || '0')
       : (order.footer?.price || '0');
 
-    setModalConfig({
-      isOpen: true,
-      title: '💰 تأكيد السداد الكامل',
-      message: `هل أنت متأكد من تحصيل المبلغ المطلوب ($${amountToCollect}) وتحديد الطلبية كمُسدّدة بالكامل؟`,
-      confirmText: 'تأكيد السداد بالكامل',
-      onConfirm: async () => {
-        setModalConfig(null);
+    setPaymentConfig({
+      title: `💰 السداد الكامل — ${order.id}`,
+      expectedUSD: parseFloat(amountToCollect) || 0,
+      onConfirm: async (amounts) => {
+        setPaymentConfig(null);
         setUpdatingId(order.id);
         const cashierName = currentUser?.arabicName || currentUser?.username || 'الكاشير';
-        const patch = {
-          isPaid: true,
-          paidAt: new Date().toISOString(),
-          paidBy: cashierName,
-          depositCollected: true,
-          depositCollectedBy: order.depositCollectedBy || cashierName,
-        };
         try {
-          await updateOrder(order.id, patch);
-          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
-        } catch {
-          setModalConfig({
-            isOpen: true,
-            title: 'خطأ',
-            message: 'فشل في تحديث حالة الدفع الكامل. تحقق من الإنترنت.',
-            type: 'alert',
-            onConfirm: () => setModalConfig(null),
+          const updated = await markPaid(order, amounts, cashierName);
+          replaceOrder(order.id, updated || {
+            isPaid: true,
+            paidAt: new Date().toISOString(),
+            paidBy: cashierName,
+            depositCollected: true,
+            depositCollectedBy: order.depositCollectedBy || cashierName,
+            finalPayment: { ...amounts, by: cashierName },
           });
+        } catch {
+          showError('فشل في تحديث حالة الدفع الكامل. تحقق من الإنترنت.');
         } finally {
           setUpdatingId(null);
         }
-      }
+      },
     });
   };
 
@@ -1118,7 +1145,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       }
     };
     try {
-      await updateOrder(order.id, patch);
+      await updateOrder(order.id, patch, { before: order, action: 'deposit_amount' });
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
     } catch {
       setModalConfig({
@@ -1147,7 +1174,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       }
     };
     try {
-      await updateOrder(order.id, patch);
+      await updateOrder(order.id, patch, { before: order, action: 'price' });
       setOrders(prev => prev.map(o => o.id === order.id ? { ...o, footer: patch.footer } : o));
     } catch {
       setModalConfig({
@@ -1173,14 +1200,9 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
       onConfirm: async () => {
         setModalConfig(null);
         setUpdatingId(order.id);
-        const patch = {
-          isPaid: false,
-          paidAt: null,
-          paidBy: null,
-        };
         try {
-          await updateOrder(order.id, patch);
-          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, ...patch } : o));
+          const updated = await undoPaid(order);
+          replaceOrder(order.id, updated || { isPaid: false, paidAt: null, paidBy: null, finalPayment: null });
         } catch {
           setModalConfig({
             isOpen: true,
@@ -1201,7 +1223,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
     setUpdatingId(order.id);
     const staffName = currentUser?.arabicName || currentUser?.username || 'طاقم المصنع';
     try {
-      await updateProductionStatus(order.id, newStatus, staffName);
+      await updateProductionStatus(order.id, newStatus, staffName, order);
       setOrders(prev => prev.map(o => o.id === order.id ? {
         ...o,
         productionStatus: newStatus,
@@ -1237,7 +1259,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         setUpdatingId(order.id);
         const staffName = currentUser?.arabicName || currentUser?.username || 'الموظف';
         try {
-          await cancelOrder(order.id, reason, staffName);
+          await cancelOrder(order.id, reason, staffName, order);
           setOrders(prev => prev.map(o => o.id === order.id ? {
             ...o,
             isCancelled: true,
@@ -1271,7 +1293,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         setModalConfig(null);
         setUpdatingId(order.id);
         try {
-          await uncancelOrder(order.id);
+          await uncancelOrder(order.id, order);
           setOrders(prev => prev.map(o => o.id === order.id ? {
             ...o,
             isCancelled: false,
@@ -1451,6 +1473,15 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
               className="bg-[#1a1a2e] text-white text-sm font-bold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-[#2d2d4a] transition-colors shadow-sm"
             >
               + طلب جديد
+            </button>
+          )}
+          {onReport && (
+            <button
+              onClick={onReport}
+              className="bg-indigo-700 text-white text-sm font-extrabold px-3.5 py-1.5 rounded-lg font-cairo hover:bg-indigo-800 transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <span>📊</span>
+              <span>التقرير اليومي</span>
             </button>
           )}
           {onFactory && !isCashier && ENABLE_FACTORY_SYSTEM && (
@@ -1657,6 +1688,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                       group={group}
                       sameDayOrdersMap={sameDayOrdersMap}
                       isCashier={isCashier}
+                      onShowHistory={isAdmin ? setHistoryOrder : null}
                       onEditOrder={onEditOrder}
                       handleWhatsApp={handleWhatsApp}
                       handleMarkPaid={handleMarkPaid}
@@ -1677,6 +1709,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                     key={group.order.id}
                     order={group.order}
                     sameDayOrdersMap={sameDayOrdersMap}
+                    onShowHistory={isAdmin ? setHistoryOrder : null}
                     onEdit={!isCashier ? () => onEditOrder?.(group.order) : null}
                     onWhatsApp={handleWhatsApp}
                     onMarkPaid={handleMarkPaid}
@@ -1711,6 +1744,16 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         </div>
       </div>
 
+      <PaymentModal
+        isOpen={!!paymentConfig}
+        title={paymentConfig?.title}
+        expectedUSD={paymentConfig?.expectedUSD}
+        onConfirm={paymentConfig?.onConfirm}
+        onCancel={() => setPaymentConfig(null)}
+      />
+      {historyOrder && (
+        <OrderHistoryModal order={historyOrder} onClose={() => setHistoryOrder(null)} />
+      )}
       {modalConfig && (
         <Modal
           {...modalConfig}

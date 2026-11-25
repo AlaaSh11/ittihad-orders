@@ -7,13 +7,14 @@
 // ============================================================
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
 import { 
   initializeFirestore, 
   persistentLocalCache, 
   persistentMultipleTabManager,
-  getFirestore
+  getFirestore,
+  connectFirestoreEmulator,
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -25,6 +26,14 @@ const firebaseConfig = {
   appId: "1:862569935873:web:596a0655e10865df22fc00",
   measurementId: "G-XCEDLNZZLC"
 };
+
+// Local testing: `VITE_USE_EMULATORS=true npm run dev` talks to the Firebase
+// emulators (`npm run emulators`) under a demo project, never to real data.
+const USE_EMULATORS = import.meta.env.VITE_USE_EMULATORS === 'true';
+if (USE_EMULATORS) {
+  firebaseConfig.projectId = 'demo-ittihad-orders';
+  firebaseConfig.storageBucket = 'demo-ittihad-orders.appspot.com';
+}
 
 // Initialize Firebase App
 export const app = initializeApp(firebaseConfig);
@@ -50,3 +59,9 @@ try {
 }
 
 export const db = dbInstance;
+
+if (USE_EMULATORS) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(db, '127.0.0.1', 8080);
+  connectStorageEmulator(storage, '127.0.0.1', 9199);
+}

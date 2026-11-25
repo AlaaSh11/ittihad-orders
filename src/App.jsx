@@ -6,6 +6,7 @@ import OrderFormView from './views/OrderFormView';
 import OrderHistoryView from './views/OrderHistoryView';
 import FactoryView from './views/FactoryView';
 import FactoryOversightView from './views/FactoryOversightView';
+import DailyReportView from './views/DailyReportView';
 import { ENABLE_FACTORY_SYSTEM } from './constants/featureFlags';
 import Modal from './components/ui/Modal';
 
@@ -87,6 +88,12 @@ export default function App() {
     setEditingOrder(null);
   };
 
+  const goToReport = () => {
+    if (currentUser?.role !== 'admin') return;
+    setCurrentView('report');
+    setEditingOrder(null);
+  };
+
   const goToNewOrder = () => {
     if (currentUser?.role === 'cashier' || currentUser?.role === 'factory') return; 
     setCurrentView('form');
@@ -130,6 +137,11 @@ export default function App() {
     );
   }
 
+  // Admin-only daily money report
+  if (currentUser.role === 'admin' && currentView === 'report') {
+    return <DailyReportView onBack={goToHistory} onLogout={handleLogout} />;
+  }
+
   // Factory role is directed exclusively to the Kitchen Display System (KDS) when feature is enabled
   if (ENABLE_FACTORY_SYSTEM && (isFactory || currentView === 'factory')) {
     return (
@@ -150,6 +162,7 @@ export default function App() {
         onNewOrder={!isCashier && !isFactory ? goToNewOrder : null}
         onEditOrder={!isCashier && !isFactory ? goToEditOrder : null}
         onFactory={!isCashier ? goToFactory : null}
+        onReport={currentUser.role === 'admin' ? goToReport : null}
       />
     );
   }

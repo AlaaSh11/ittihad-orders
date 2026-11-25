@@ -13,6 +13,10 @@ rules_version = '2';
 //   cashier → payment/deposit/price fields + production status
 //   factory → production status fields only
 //
+// Every order write carries a change-history entry (who, when, what)
+// and money collected is recorded in /payments. Both are append-only
+// and readable by admin only.
+//
 // Non-admin/boss roles are also restricted to shop working hours
 // (07:00–22:00 Asia/Beirut), enforced server-side here.
 // ============================================================
@@ -72,6 +76,30 @@ service cloud.firestore {
     // Bookkeeping fields written by the client on every update / sync.
     // (Listed literally inside each allow-list below; rules have no list concat.)
 
+    // ── Change history (audit trail) ───────────────────────────
+    // Every order create/update must, in the same batch, add a history
+    // entry orders/{id}/history/{lastChangeId}. The entry records who
+    // and when (server time) and must list every top-level field the
+    // write changed. History can never be edited or deleted.
+    function orderPath(orderId) {
+      return /databases/$(database)/documents/orders/$(orderId);
+    }
+    function historyPath(orderId, changeId) {
+      return /databases/$(database)/documents/orders/$(orderId)/history/$(changeId);
+    }
+    function newChangeId() {
+      return request.resource.data.get('lastChangeId', '');
+    }
+    function createRecorded(orderId) {
+      return newChangeId() is string && newChangeId() != ''
+        && existsAfter(historyPath(orderId, newChangeId()));
+    }
+    function updateRecorded(orderId) {
+      return newChangeId() is string && newChangeId() != ''
+        && newChangeId() != resource.data.get('lastChangeId', '')
+        && existsAfter(historyPath(orderId, newChangeId()));
+    }
+
     // ── Orders ────────────────────────────────────────────────
     match /orders/{orderId} {
       allow read: if canRead();
@@ -80,11 +108,13 @@ service cloud.firestore {
         && orderId.matches('^CAKE-[0-9]+$')
         && request.resource.data.id == orderId
         && request.resource.data.header is map
-        && validProductionStatus();
+        && validProductionStatus()
+        && createRecorded(orderId);
 
       allow update: if inWorkingHours()
         && validProductionStatus()
         && request.resource.data.id == resource.data.id
+        && updateRecorded(orderId)
         && (
           isRole('admin')
           || (isRole('staff')
@@ -92,16 +122,71 @@ service cloud.firestore {
           || (isRole('cashier') && onlyChanges([
                 'isPaid', 'paidAt', 'paidBy',
                 'depositCollected', 'depositCollectedAt', 'depositCollectedBy',
+                'depositPayment', 'finalPayment',
                 'footer',
                 'productionStatus', 'productionStatusUpdatedAt', 'productionStatusUpdatedBy',
-                'updatedAt', 'syncedAt', 'savedAt']))
+                'updatedAt', 'syncedAt', 'savedAt', 'lastChangeId']))
           || (isRole('factory') && onlyChanges([
                 'productionStatus', 'productionStatusUpdatedAt', 'productionStatusUpdatedBy',
-                'updatedAt', 'syncedAt', 'savedAt']))
+                'updatedAt', 'syncedAt', 'savedAt', 'lastChangeId']))
         );
 
       // Deletion is never allowed (business audit safety).
       allow delete: if false;
+
+      match /history/{changeId} {
+        allow read: if isRole('admin');
+        allow create: if hasAnyRole() && !isRole('boss') && inWorkingHours()
+          && request.resource.data.keys().hasOnly(
+               ['action', 'fields', 'changes', 'uid', 'by', 'role', 'at', 'clientAt', 'day'])
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.role == role()
+          && request.resource.data.at == request.time
+          && request.resource.data.fields is list
+          && request.resource.data.changes is list
+          && request.resource.data.action is string
+          && existsAfter(orderPath(orderId))
+          && getAfter(orderPath(orderId)).data.get('lastChangeId', '') == changeId
+          && (
+            !exists(orderPath(orderId))
+            || getAfter(orderPath(orderId)).data.diff(get(orderPath(orderId)).data)
+                 .affectedKeys().hasOnly(request.resource.data.fields.concat(['lastChangeId']))
+          );
+        allow update, delete: if false;
+      }
+    }
+
+    // Admin report: query history across all orders.
+    match /{path=**}/history/{changeId} {
+      allow read: if isRole('admin');
+    }
+
+    // ── Payments ──────────────────────────────────────────────
+    // One document per amount collected (or reversed), written in the
+    // same batch as the order change it belongs to. Amounts may be in
+    // USD, LBP or both. Never edited or deleted; a reversal is a new
+    // 'void' entry with negative amounts.
+    match /payments/{paymentId} {
+      allow read: if isRole('admin');
+      allow create: if (isRole('admin') || isRole('cashier') || isRole('staff'))
+        && inWorkingHours()
+        && request.resource.data.keys().hasOnly(
+             ['orderId', 'changeId', 'kind', 'usd', 'lbp', 'uid', 'by', 'at', 'clientAt', 'day', 'customerName'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.at == request.time
+        && request.resource.data.usd is number
+        && request.resource.data.lbp is number
+        && (
+          (request.resource.data.kind in ['deposit', 'final']
+            && request.resource.data.usd >= 0 && request.resource.data.lbp >= 0
+            && request.resource.data.usd + request.resource.data.lbp > 0)
+          || (request.resource.data.kind == 'void'
+            && request.resource.data.usd <= 0 && request.resource.data.lbp <= 0)
+        )
+        && existsAfter(orderPath(request.resource.data.orderId))
+        && getAfter(orderPath(request.resource.data.orderId)).data.get('lastChangeId', '')
+             == request.resource.data.changeId;
+      allow update, delete: if false;
     }
 
     // ── Order serial counter ──────────────────────────────────

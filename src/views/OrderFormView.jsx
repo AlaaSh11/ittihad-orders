@@ -5,6 +5,7 @@ import { buildWhatsAppUrl } from '../lib/whatsapp';
 import { RECEIVER_OPTIONS } from '../constants/receiverOptions';
 import { DEFAULT_TIME } from '../constants/timeSlots';
 import { ENABLE_FACTORY_SYSTEM } from '../constants/featureFlags';
+import { EXCHANGE_RATE } from '../constants/currency';
 
 import OrderHeader from '../components/OrderHeader';
 import OrderTypeSelector from '../components/OrderTypeSelector';
@@ -125,7 +126,6 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   const [priceError, setPriceError] = useState('');
   const [editingItemId, setEditingItemId] = useState(null); // ID of item being edited
 
-  const EXCHANGE_RATE = 90000;
 
   const handleDraftTypeChange = (type) => {
     setDraftType(type);
@@ -317,7 +317,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
           isPaid: editingOrder.isPaid || false,
           depositCollected: editingOrder.depositCollected || false,
         };
-        const updated = await updateOrder(editingOrder.id, patch);
+        const updated = await updateOrder(editingOrder.id, patch, { before: editingOrder, action: 'edit' });
         const fullOrder = updated || { ...editingOrder, ...patch, updatedAt: new Date().toISOString() };
         setSavedOrder(fullOrder);
         setOrderId(editingOrder.id);
@@ -326,7 +326,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
         // Already saved in this session: update that order instead of
         // creating a duplicate with a new number.
         const patch = { header: { ...headerData }, items: cartItems, footer: finalFooter };
-        const updated = await updateOrder(savedOrder.id, patch);
+        const updated = await updateOrder(savedOrder.id, patch, { before: savedOrder, action: 'edit' });
         const fullOrder = updated || { ...savedOrder, ...patch, updatedAt: new Date().toISOString() };
         setSavedOrder(fullOrder);
         setOrderId(fullOrder.id);

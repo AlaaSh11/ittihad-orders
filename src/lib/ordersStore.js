@@ -4,16 +4,19 @@ import {
   setDoc, 
   getDoc, 
   getDocs, 
-  updateDoc, 
   query, 
   where, 
   orderBy, 
   limit,
   startAfter,
-  runTransaction 
+  runTransaction,
+  writeBatch,
+  serverTimestamp,
+  collectionGroup,
 } from 'firebase/firestore';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { uploadPhotoDataUrl } from './storageHelper';
+import { getCurrentUser } from './auth';
 
 const ORDERS_KEY = 'ittihad_orders_backup';
 const QUEUE_KEY = 'ittihad_offline_queue';
@@ -81,6 +84,117 @@ function buildSearchFields(order) {
   };
 }
 
+// ── Change history & payments ─────────────────────────────────
+//
+// Every order write goes through a batch that also adds a history entry
+// (orders/{id}/history/{changeId}) and, when money changes hands, a
+// /payments document. firestore.rules rejects order writes that skip it.
+
+// Fields that change on every write and are not worth showing in history.
+const HISTORY_SKIP = new Set(['updatedAt', 'syncedAt', 'savedAt', 'searchName', 'searchPhone', 'searchId', 'lastChangeId']);
+
+function shortValue(v) {
+  if (v === undefined || v === null || v === '') return '';
+  const str = typeof v === 'string' ? v : JSON.stringify(v);
+  return str.length > 200 ? str.slice(0, 197) + '...' : str;
+}
+
+/**
+ * Human-readable list of what a patch changes compared to `before`:
+ * [{ f: 'footer.price', from: '50', to: '35' }, ...]. Header/footer are
+ * compared field by field; items are summarised.
+ */
+export function describeChanges(before, patch) {
+  const out = [];
+  const old = before || {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (HISTORY_SKIP.has(key)) continue;
+    const prev = old[key];
+    if (key === 'items') {
+      const a = Array.isArray(prev) ? prev : [];
+      const b = Array.isArray(value) ? value : [];
+      if (JSON.stringify(a) !== JSON.stringify(b)) {
+        out.push({ f: 'items', from: `${a.length}`, to: `${b.length}` });
+      }
+    } else if (value && typeof value === 'object' && !Array.isArray(value) && (key === 'header' || key === 'footer')) {
+      const p = prev && typeof prev === 'object' ? prev : {};
+      for (const k of new Set([...Object.keys(p), ...Object.keys(value)])) {
+        if (shortValue(p[k]) !== shortValue(value[k])) {
+          out.push({ f: `${key}.${k}`, from: shortValue(p[k]), to: shortValue(value[k]) });
+        }
+      }
+    } else if (shortValue(prev) !== shortValue(value)) {
+      out.push({ f: key, from: shortValue(prev), to: shortValue(value) });
+    }
+  }
+  return out;
+}
+
+/** The signed-in user, as recorded in history and payments. */
+function actor() {
+  const u = getCurrentUser();
+  return {
+    uid: auth.currentUser?.uid || '',
+    by: u?.arabicName || u?.username || '',
+    role: u?.role || '',
+  };
+}
+
+function historyDoc(action, fields, changes, meta) {
+  const a = actor();
+  return {
+    action,
+    fields,
+    changes: changes || [],
+    uid: a.uid,
+    by: a.by,
+    role: a.role,
+    at: serverTimestamp(),
+    clientAt: meta.clientAt,
+    day: localDateString(0, new Date(meta.clientAt)),
+  };
+}
+
+function paymentDoc(orderId, changeId, payment, meta) {
+  const a = actor();
+  return {
+    orderId,
+    changeId,
+    kind: payment.kind,
+    usd: Number(payment.usd) || 0,
+    lbp: Number(payment.lbp) || 0,
+    uid: a.uid,
+    by: a.by,
+    at: serverTimestamp(),
+    clientAt: meta.clientAt,
+    day: localDateString(0, new Date(meta.clientAt)),
+    customerName: payment.customerName || '',
+  };
+}
+
+/** Write an order update together with its history entry (and payment). */
+async function commitUpdate(id, patch, meta) {
+  const batch = writeBatch(db);
+  const orderRef = doc(db, ORDERS_COLLECTION, id);
+  const histRef = doc(collection(orderRef, 'history'));
+  batch.update(orderRef, { ...patch, lastChangeId: histRef.id });
+  batch.set(histRef, historyDoc(meta.action || 'update', Object.keys(patch), meta.changes, meta));
+  for (const payment of meta.payments || []) {
+    batch.set(doc(collection(db, 'payments')), paymentDoc(id, histRef.id, payment, meta));
+  }
+  await batch.commit();
+}
+
+/** Write a new order together with its 'create' history entry. */
+async function commitCreate(order, meta) {
+  const batch = writeBatch(db);
+  const orderRef = doc(db, ORDERS_COLLECTION, order.id);
+  const histRef = doc(collection(orderRef, 'history'));
+  batch.set(orderRef, { ...order, lastChangeId: histRef.id });
+  batch.set(histRef, historyDoc('create', [], [], meta));
+  await batch.commit();
+}
+
 // ── Offline Queue Sync Engine ─────────────────────────────────────
 
 export async function syncOfflineQueue() {
@@ -125,9 +239,13 @@ export async function syncOfflineQueue() {
         const orderToStore = { ...order, ...searchFields, syncedAt: new Date().toISOString() };
         if (oldId !== order.id) orderToStore.offlineTempId = oldId;
 
-        // 4. Save to Firestore
-        const orderRef = doc(db, ORDERS_COLLECTION, orderToStore.id);
-        await setDoc(orderRef, orderToStore);
+        // 4. Save to Firestore (with its history entry), then any payments
+        //    taken while it was still offline.
+        const meta = { clientAt: item.clientAt || order.createdAt || new Date().toISOString() };
+        await commitCreate(orderToStore, meta);
+        for (const p of item.pendingPayments || []) {
+          await commitUpdate(orderToStore.id, {}, { action: p.action, clientAt: p.clientAt, payments: [p.payment] });
+        }
 
         // 5. Update local storage: swap old TEMP-OFFLINE ID with new official ID
         const localOrders = readLocalOrders();
@@ -141,8 +259,12 @@ export async function syncOfflineQueue() {
 
         console.log(`[Offline Sync] Successfully synced order ${orderToStore.id} (was ${oldId})`);
       } else if (item.type === 'UPDATE') {
-        const orderRef = doc(db, ORDERS_COLLECTION, item.id);
-        await updateDoc(orderRef, { ...item.patch, syncedAt: new Date().toISOString() });
+        await commitUpdate(item.id, { ...item.patch, syncedAt: new Date().toISOString() }, {
+          action: item.action || 'update',
+          changes: item.changes || [],
+          payments: item.payments || [],
+          clientAt: item.clientAt || new Date(item.timestamp || Date.now()).toISOString(),
+        });
       }
     } catch (err) {
       console.warn(`[Offline Sync] Failed to sync operation for order ${item.id || item.order?.id}:`, err?.message);
@@ -212,12 +334,12 @@ export async function createOrder(order) {
   // 2. Write to Firestore if online, or add to offline queue
   try {
     if (!navigator.onLine) throw new Error('Client is offline');
-    const orderRef = doc(db, ORDERS_COLLECTION, saved.id);
-    await setDoc(orderRef, saved);
+    if (saved.id.startsWith('TEMP-OFFLINE-')) throw new Error('No official order number yet');
+    await commitCreate(saved, { clientAt: saved.savedAt });
   } catch (error) {
     console.warn('Enqueued order for offline sync:', saved.id, error?.message);
     const queue = readOfflineQueue();
-    queue.push({ type: 'CREATE', order: saved, timestamp: Date.now() });
+    queue.push({ type: 'CREATE', order: saved, timestamp: Date.now(), clientAt: saved.savedAt });
     writeOfflineQueue(queue);
   }
 
@@ -234,7 +356,16 @@ export async function getOrdersByVisit(customerVisitId) {
   }
 }
 
-export async function updateOrder(id, patch) {
+/**
+ * Update an order and record the change in its history.
+ * @param {string} id
+ * @param {Object} patch      top-level fields to set
+ * @param {Object} [options]
+ * @param {Object} [options.before]   the order as currently shown (for the change description)
+ * @param {string} [options.action]   e.g. 'edit', 'payment', 'cancel'
+ * @param {Object} [options.payment]  { kind: 'deposit'|'final'|'void', usd, lbp, customerName }
+ */
+export async function updateOrder(id, patch, { before, action = 'update', payment } = {}) {
   const updatedAt = new Date().toISOString();
 
   // Keep the search index in sync when the customer details change.
@@ -249,8 +380,11 @@ export async function updateOrder(id, patch) {
     const pending = queue.find((q) => q.type === 'CREATE' && q.order?.id === id);
     if (pending) {
       // Not synced yet: amend the queued creation instead of queueing an update
-      // for a document that does not exist.
+      // for a document that does not exist. Payments are written after it syncs.
       pending.order = { ...pending.order, ...patch, updatedAt };
+      if (payment) {
+        pending.pendingPayments = [...(pending.pendingPayments || []), { action, payment, clientAt: updatedAt }];
+      }
       writeOfflineQueue(queue);
       const localOrders = readLocalOrders();
       const i = localOrders.findIndex((o) => o.id === id);
@@ -268,6 +402,8 @@ export async function updateOrder(id, patch) {
   // Update local
   const localOrders = readLocalOrders();
   const idx = localOrders.findIndex((o) => o.id === id);
+  const changes = describeChanges(before || localOrders[idx], patch);
+  const payments = payment ? [payment] : [];
   if (idx !== -1) {
     localOrders[idx] = { ...localOrders[idx], ...patch, updatedAt };
     writeLocalOrders(localOrders);
@@ -277,31 +413,91 @@ export async function updateOrder(id, patch) {
   try {
     if (!navigator.onLine) throw new Error('Offline');
     const orderRef = doc(db, ORDERS_COLLECTION, id);
-    await updateDoc(orderRef, { ...patch, updatedAt });
+    await commitUpdate(id, { ...patch, updatedAt }, { action, changes, payments, clientAt: updatedAt });
     const updatedSnap = await getDoc(orderRef);
     return updatedSnap.exists() ? normalizeOrder(updatedSnap.data()) : null;
   } catch (e) {
     console.warn('Update queued offline:', id, e?.message);
     const queue = readOfflineQueue();
-    queue.push({ type: 'UPDATE', id, patch, timestamp: Date.now() });
+    queue.push({ type: 'UPDATE', id, patch: { ...patch, updatedAt }, action, changes, payments, clientAt: updatedAt, timestamp: Date.now() });
     writeOfflineQueue(queue);
     return idx !== -1 ? normalizeOrder(localOrders[idx]) : null;
   }
 }
 
-export async function collectDeposit(id, collectedBy) {
-  return updateOrder(id, {
+/**
+ * Cashier collected the deposit: records the amount(s) actually received.
+ * @param {Object} order
+ * @param {{ usd: number, lbp: number }} amounts
+ * @param {string} collectedBy
+ */
+export async function collectDeposit(order, amounts, collectedBy) {
+  const at = new Date().toISOString();
+  const by = collectedBy || 'الكاشير';
+  return updateOrder(order.id, {
     depositCollected: true,
-    depositCollectedAt: new Date().toISOString(),
-    depositCollectedBy: collectedBy || 'الكاشير',
+    depositCollectedAt: at,
+    depositCollectedBy: by,
+    depositPayment: { usd: Number(amounts.usd) || 0, lbp: Number(amounts.lbp) || 0, at, by },
+  }, {
+    before: order,
+    action: 'deposit',
+    payment: { kind: 'deposit', ...amounts, customerName: order.header?.customerName },
   });
 }
 
-export async function undoDeposit(id) {
-  return updateOrder(id, {
+/** Undo a deposit collection; reverses the recorded amount in /payments. */
+export async function undoDeposit(order) {
+  const prev = order.depositPayment;
+  return updateOrder(order.id, {
     depositCollected: false,
     depositCollectedAt: null,
     depositCollectedBy: null,
+    depositPayment: null,
+  }, {
+    before: order,
+    action: 'undo_deposit',
+    payment: prev && (prev.usd || prev.lbp)
+      ? { kind: 'void', usd: -(prev.usd || 0), lbp: -(prev.lbp || 0), customerName: order.header?.customerName }
+      : undefined,
+  });
+}
+
+/**
+ * Cashier collected the final payment: records the amount(s) received
+ * and marks the order fully paid.
+ */
+export async function markPaid(order, amounts, paidBy) {
+  const at = new Date().toISOString();
+  const by = paidBy || 'الكاشير';
+  return updateOrder(order.id, {
+    isPaid: true,
+    paidAt: at,
+    paidBy: by,
+    depositCollected: true,
+    depositCollectedBy: order.depositCollectedBy || by,
+    finalPayment: { usd: Number(amounts.usd) || 0, lbp: Number(amounts.lbp) || 0, at, by },
+  }, {
+    before: order,
+    action: 'payment',
+    payment: { kind: 'final', ...amounts, customerName: order.header?.customerName },
+  });
+}
+
+/** Undo "fully paid"; reverses the recorded final payment in /payments. */
+export async function undoPaid(order) {
+  const prev = order.finalPayment;
+  return updateOrder(order.id, {
+    isPaid: false,
+    paidAt: null,
+    paidBy: null,
+    finalPayment: null,
+  }, {
+    before: order,
+    action: 'undo_payment',
+    payment: prev && (prev.usd || prev.lbp)
+      ? { kind: 'void', usd: -(prev.usd || 0), lbp: -(prev.lbp || 0), customerName: order.header?.customerName }
+      : undefined,
   });
 }
 
@@ -318,30 +514,30 @@ function normalizeOrder(data) {
   };
 }
 
-export async function updateProductionStatus(id, newStatus, updatedBy) {
+export async function updateProductionStatus(id, newStatus, updatedBy, before) {
   return updateOrder(id, {
     productionStatus: newStatus,
     productionStatusUpdatedAt: new Date().toISOString(),
     productionStatusUpdatedBy: updatedBy || 'المصنع',
-  });
+  }, { before, action: 'production' });
 }
 
-export async function cancelOrder(id, reason, cancelledBy) {
+export async function cancelOrder(id, reason, cancelledBy, before) {
   return updateOrder(id, {
     isCancelled: true,
     cancelledReason: reason || 'إلغاء من قبل الزبون / الإدارة',
     cancelledAt: new Date().toISOString(),
     cancelledBy: cancelledBy || 'الموظف',
-  });
+  }, { before, action: 'cancel' });
 }
 
-export async function uncancelOrder(id) {
+export async function uncancelOrder(id, before) {
   return updateOrder(id, {
     isCancelled: false,
     cancelledReason: null,
     cancelledAt: null,
     cancelledBy: null,
-  });
+  }, { before, action: 'uncancel' });
 }
 
 export async function listOrders(maxCount = 150) {
@@ -359,8 +555,10 @@ export async function listOrders(maxCount = 150) {
 }
 
 /** YYYY-MM-DD in the device's local time zone (the shop's). */
-function localDateString(offsetDays = 0) {
-  const d = new Date();
+export { localDateString };
+
+function localDateString(offsetDays = 0, from = new Date()) {
+  const d = new Date(isNaN(from.getTime()) ? Date.now() : from.getTime());
   d.setDate(d.getDate() + offsetDays);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -496,4 +694,37 @@ export async function searchOrders(searchInput) {
       (o.id || '').toLowerCase().includes(qStr)
     );
   }
+}
+
+// ── Admin report ──────────────────────────────────────────────────
+
+/** Change-history entries for one order, oldest first (admin only). */
+export async function getOrderHistory(orderId) {
+  const snap = await getDocs(collection(db, ORDERS_COLLECTION, orderId, 'history'));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (a.clientAt || '').localeCompare(b.clientAt || ''));
+}
+
+/**
+ * Everything the daily report needs for one day (YYYY-MM-DD, shop time):
+ * payments taken, orders created, order changes made that day, and all
+ * currently unpaid orders. Admin only.
+ */
+export async function getDailyReportData(day) {
+  const [y, m, d] = day.split('-').map(Number);
+  const start = new Date(y, m - 1, d).toISOString();
+  const end = new Date(y, m - 1, d + 1).toISOString();
+  const [paySnap, createdSnap, histSnap, open] = await Promise.all([
+    getDocs(query(collection(db, 'payments'), where('day', '==', day))),
+    getDocs(query(collection(db, ORDERS_COLLECTION), where('createdAt', '>=', start), where('createdAt', '<', end))),
+    getDocs(query(collectionGroup(db, 'history'), where('day', '==', day))),
+    listOpenOrders({ includeUnpaid: true, daysBack: 0 }),
+  ]);
+  return {
+    payments: paySnap.docs.map((x) => ({ id: x.id, ...x.data() })),
+    createdOrders: createdSnap.docs.map((x) => normalizeOrder(x.data())),
+    changes: histSnap.docs.map((x) => ({ id: x.id, orderId: x.ref.parent.parent?.id, ...x.data() })),
+    unpaidOrders: open.filter((o) => !o.isPaid && !o.isCancelled),
+  };
 }

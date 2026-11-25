@@ -138,7 +138,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
   const handleStageChange = async (order, newStatus) => {
     setUpdatingId(order.id);
     try {
-      await updateProductionStatus(order.id, newStatus, staffName);
+      await updateProductionStatus(order.id, newStatus, staffName, order);
       setOrders(prev => prev.map(o => o.id === order.id ? {
         ...o,
         productionStatus: newStatus,
