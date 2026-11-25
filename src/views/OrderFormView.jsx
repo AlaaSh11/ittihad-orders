@@ -231,9 +231,14 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
     return null;
   };
 
+  // Every item needs a price: an item without one would silently be left out of the total.
+  const MISSING_PRICE_ERROR = '⚠️ يرجى إدخال سعر هذا الصنف (بالدولار أو بالليرة). لا يمكن أن يكون السعر 0.';
+  const hasPrice = (usd) => (parseFloat(usd) || 0) > 0;
+
   const handleSaveEdit = () => {
     const itemErr = validateDraftItem(draftType, draftBody);
     if (itemErr) { setPriceError(itemErr); return; }
+    if (!hasPrice(draftPriceUSD)) { setPriceError(MISSING_PRICE_ERROR); return; }
 
     const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
@@ -259,6 +264,7 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
   const handleAddToCart = () => {
     const itemErr = validateDraftItem(draftType, draftBody);
     if (itemErr) { setPriceError(itemErr); return; }
+    if (!hasPrice(draftPriceUSD)) { setPriceError(MISSING_PRICE_ERROR); return; }
 
     const err = validatePrices(draftPriceUSD, draftPriceLBP);
     if (err) { setPriceError(err); return; }
@@ -293,6 +299,12 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
       }
       if (cartItems.length === 0) {
         setSaveError('⚠️ السلة فارغة. يرجى إضافة صنف واحد على الأقل.');
+        setSaving(false);
+        return;
+      }
+      const unpriced = cartItems.findIndex((i) => !hasPrice(i.priceUSD));
+      if (unpriced !== -1) {
+        setSaveError(`⚠️ الصنف ${unpriced + 1} بدون سعر. يرجى تعديله وإدخال السعر قبل الحفظ.`);
         setSaving(false);
         return;
       }
@@ -835,6 +847,13 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
 
               {saveError && (
                 <p className="text-[#e2495c] text-xs font-bold text-center mt-2 font-cairo">{saveError}</p>
+              )}
+              {isSaved && (savedOrder?.pendingSync || savedOrder?.id?.startsWith('TEMP-OFFLINE-')) && (
+                <p className="mt-2 text-xs font-bold text-center font-cairo text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                  📶 تم حفظ الطلبية على هذا الجهاز، وسيتم إرسالها تلقائياً عند عودة الإنترنت.
+                  {savedOrder?.id?.startsWith('TEMP-OFFLINE-') && ' سيُعطى رقم الطلبية النهائي عند الإرسال.'}
+                  {' '}لا تمسح بيانات المتصفح قبل ذلك.
+                </p>
               )}
 
               <div className="mt-4 pt-3 border-t border-gray-200 grid grid-cols-3 gap-3">

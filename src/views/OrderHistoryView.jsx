@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrdersPaginated, listOpenOrders, mergeOrders, searchOrders, updateOrder, collectDeposit, undoDeposit, markPaid, undoPaid, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic } from '../lib/ordersStore';
+import { createPortal } from 'react-dom';
+import PrintLayout from '../components/PrintLayout';
+import { listOrdersPaginated, listOpenOrders, mergeOrders, searchOrders, updateOrder, collectDeposit, undoDeposit, markPaid, undoPaid, updateProductionStatus, cancelOrder, uncancelOrder, normalizeArabic, localDateString } from '../lib/ordersStore';
 import PaymentModal from '../components/ui/PaymentModal';
 import { formatMixed } from '../constants/currency';
 import OrderHistoryModal from '../components/OrderHistoryModal';
@@ -155,6 +157,7 @@ function fullOrderSummary(order) {
 
 function OrderCard({
   order,
+  onPrint,
   onShowHistory,
   onEdit,
   onWhatsApp,
@@ -788,6 +791,16 @@ function OrderCard({
             💬 إرسال واتساب للزبون
           </button>
 
+          {/* Reprint the receipt (shop + factory copies) */}
+          {onPrint && (
+            <button
+              onClick={() => onPrint(order)}
+              className="border border-slate-400 text-slate-700 hover:bg-slate-50 text-xs font-bold py-2 px-3 rounded-lg transition-colors font-cairo active:scale-[0.97] flex items-center justify-center gap-1"
+            >
+              🖨️ طباعة الإيصال
+            </button>
+          )}
+
           {/* Change history — admin only */}
           {onShowHistory && (
             <button
@@ -809,6 +822,7 @@ function OrderCard({
 
 function CustomerBundleCard({
   group,
+  onPrint,
   onShowHistory,
   sameDayOrdersMap,
   isCashier,
@@ -882,6 +896,7 @@ function CustomerBundleCard({
               order={order}
               sameDayOrdersMap={sameDayOrdersMap}
               isBundled={true}
+              onPrint={onPrint}
               onShowHistory={onShowHistory}
               onEdit={!isCashier ? () => onEditOrder?.(order) : null}
               onWhatsApp={handleWhatsApp}
@@ -951,6 +966,16 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
   const [modalConfig, setModalConfig] = useState(null);
   const [paymentConfig, setPaymentConfig] = useState(null); // { title, expectedUSD, onConfirm }
   const [historyOrder, setHistoryOrder] = useState(null);   // order whose change history is open (admin)
+  const [printOrder, setPrintOrder] = useState(null);       // order being reprinted
+
+  // Reprint: render the receipt, open the print dialog, then clear it.
+  useEffect(() => {
+    if (!printOrder) return;
+    const done = () => setPrintOrder(null);
+    window.addEventListener('afterprint', done, { once: true });
+    const t = setTimeout(() => window.print(), 50);
+    return () => { clearTimeout(t); window.removeEventListener('afterprint', done); };
+  }, [printOrder]);
 
   // Filter States
   const [paymentFilter, setPaymentFilter] = useState('unpaid'); 
@@ -1351,10 +1376,8 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
     // 4. Delivery Date filter (Due Today / Tomorrow)
     if (dateFilter !== 'all') {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const tomorrow = new Date();
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowStr = tomorrow.toISOString().split('T')[0];
+      const todayStr = localDateString();
+      const tomorrowStr = localDateString(1);
 
       if (dateFilter === 'today') {
         // Includes orders due today AND past-due uncompleted/unpaid orders!
@@ -1382,7 +1405,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
 
   // Count orders due today for quick dashboard hint
   const dueTodayCount = useMemo(() => {
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = localDateString();
     return orders.filter(o => !o.isCancelled && (o.header?.deliveryDate === todayStr || (o.header?.deliveryDate < todayStr && o.productionStatus !== 'delivered' && !o.isPaid))).length;
   }, [orders]);
 
@@ -1454,7 +1477,9 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
   };
 
   return (
-    <div className="min-h-screen bg-[#eaeaf2]" dir="rtl">
+    <>
+    {printOrder && createPortal(<PrintLayout order={printOrder} />, document.body)}
+    <div className="min-h-screen bg-[#eaeaf2] print:hidden" dir="rtl">
 
       {/* ── Top bar ── */}
       <div className="flex items-center justify-between max-w-[850px] mx-auto px-4 py-2.5">
@@ -1688,6 +1713,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                       group={group}
                       sameDayOrdersMap={sameDayOrdersMap}
                       isCashier={isCashier}
+                      onPrint={setPrintOrder}
                       onShowHistory={isAdmin ? setHistoryOrder : null}
                       onEditOrder={onEditOrder}
                       handleWhatsApp={handleWhatsApp}
@@ -1709,6 +1735,7 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
                     key={group.order.id}
                     order={group.order}
                     sameDayOrdersMap={sameDayOrdersMap}
+                    onPrint={setPrintOrder}
                     onShowHistory={isAdmin ? setHistoryOrder : null}
                     onEdit={!isCashier ? () => onEditOrder?.(group.order) : null}
                     onWhatsApp={handleWhatsApp}
@@ -1768,5 +1795,6 @@ export default function OrderHistoryView({ currentUser, onLogout, onNewOrder, on
         }
       `}</style>
     </div>
+    </>
   );
 }

@@ -202,6 +202,20 @@ function paymentDoc(orderId, changeId, payment, meta) {
   };
 }
 
+// On a weak connection Firestore can take minutes to confirm a write. The
+// write is already stored on the device (persistent cache) and is sent
+// automatically when the connection recovers, so after this long the save
+// is reported as done-but-pending instead of leaving the screen spinning.
+const WRITE_CONFIRM_TIMEOUT_MS = 12000;
+
+/** Resolves 'done' when the write is confirmed, or 'pending' after the timeout. Rejects if it fails first. */
+function settleWithin(write, ms = WRITE_CONFIRM_TIMEOUT_MS) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => resolve('pending'), ms); });
+  write.catch((e) => console.error('Delayed write was rejected:', e?.message));
+  return Promise.race([write.then(() => 'done'), timeout]).finally(() => clearTimeout(timer));
+}
+
 /** Write an order update together with its history entry (and payment). */
 async function commitUpdate(id, patch, meta) {
   const batch = writeBatch(db);
@@ -394,10 +408,13 @@ export async function createOrder(order) {
   try {
     if (!navigator.onLine) throw new Error('Client is offline');
     if (saved.id.startsWith('TEMP-OFFLINE-')) throw new Error('No official order number yet');
-    await commitCreate(saved, { clientAt: saved.savedAt });
+    if (await settleWithin(commitCreate(saved, { clientAt: saved.savedAt })) === 'pending') {
+      return { ...saved, pendingSync: true };
+    }
   } catch (error) {
     console.warn('Enqueued order for offline sync:', saved.id, error?.message);
     enqueue({ type: 'CREATE', order: saved, timestamp: Date.now(), clientAt: saved.savedAt });
+    return { ...saved, pendingSync: true };
   }
 
   return saved;
@@ -472,7 +489,10 @@ export async function updateOrder(id, patch, { before, action = 'update', paymen
   try {
     if (!navigator.onLine) throw new Error('Offline');
     const orderRef = doc(db, ORDERS_COLLECTION, id);
-    await commitUpdate(id, { ...patch, updatedAt }, { action, changes, payments, clientAt: updatedAt });
+    const write = commitUpdate(id, { ...patch, updatedAt }, { action, changes, payments, clientAt: updatedAt });
+    if (await settleWithin(write) === 'pending') {
+      return normalizeOrder({ ...(before || localOrders[idx] || {}), ...patch, updatedAt, pendingSync: true });
+    }
     const updatedSnap = await getDoc(orderRef);
     return updatedSnap.exists() ? normalizeOrder(updatedSnap.data()) : null;
   } catch (e) {

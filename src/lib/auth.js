@@ -53,6 +53,27 @@ export function isWithinWorkingHours(role) {
   return hour >= 7 && hour < 22;
 }
 
+/**
+ * Minutes left before the automatic 22:00 logout, or null for roles that
+ * are not limited (admin, boss) or when outside working hours.
+ * @param {string} role
+ * @returns {number|null}
+ */
+export function minutesUntilShopClose(role) {
+  if (role === 'admin' || role === 'boss') return null;
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SHOP_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const h = parseInt(parts.find((p) => p.type === 'hour')?.value ?? '0', 10);
+  const m = parseInt(parts.find((p) => p.type === 'minute')?.value ?? '0', 10);
+  const now = h * 60 + m;
+  if (now < 7 * 60 || now >= 22 * 60) return null;
+  return 22 * 60 - now;
+}
+
 function usernameFromEmail(email) {
   return (email || '').toLowerCase().split('@')[0];
 }

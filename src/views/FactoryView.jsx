@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { subscribeOperationalOrders, updateProductionStatus } from '../lib/ordersStore';
+import { subscribeOperationalOrders, updateProductionStatus, localDateString } from '../lib/ordersStore';
 import { useToday } from '../lib/useToday';
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
 import { compareDeliveryTimes } from '../constants/timeSlots';
@@ -43,10 +43,8 @@ function resolveAddons(addonIds) {
  */
 function formatKitchenDate(dateStr, timeStr, dayName) {
   if (!dateStr) return 'موعد غير محدد';
-  const todayStr = new Date().toISOString().split('T')[0];
-  const tomorrow = new Date();
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  const tomorrowStr = tomorrow.toISOString().split('T')[0];
+  const todayStr = localDateString();
+  const tomorrowStr = localDateString(1);
 
   let prefix = dateStr;
   if (dateStr === todayStr) prefix = 'اليوم 🔴';
@@ -359,7 +357,7 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
             const st = order.productionStatus || 'received';
             const badge = STATUS_BADGES[st] || STATUS_BADGES.received;
             const isUpdatingThis = updatingId === order.id;
-            const dueToday = order.header?.deliveryDate === new Date().toISOString().split('T')[0];
+            const dueToday = order.header?.deliveryDate === localDateString();
 
             // Normalize items
             const isMultiItem = Array.isArray(order.items) && order.items.length > 0;

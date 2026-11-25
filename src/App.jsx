@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { getCurrentUser, isWithinWorkingHours, logout, subscribeToAuth } from './lib/auth';
+import { getCurrentUser, isWithinWorkingHours, minutesUntilShopClose, logout, subscribeToAuth } from './lib/auth';
 import { syncOfflineQueue } from './lib/ordersStore';
 import LoginView from './views/LoginView';
 import OrderFormView from './views/OrderFormView';
@@ -20,6 +20,8 @@ function defaultViewFor(user) {
 export default function App() {
   const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
   const [shiftAlert, setShiftAlert] = useState(false);
+  const [closingWarning, setClosingWarning] = useState(null); // minutes left before 22:00
+  const closingWarnedRef = useRef(false);
   const [currentView, setCurrentView] = useState(() => defaultViewFor(getCurrentUser())); // 'form' | 'history' | 'factory' | 'oversight'
   const [editingOrder, setEditingOrder] = useState(null); // null = new order mode
 
@@ -50,6 +52,12 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     const checkHours = () => {
+      // Warn once, 15 minutes before the automatic logout, so open orders get saved.
+      const left = minutesUntilShopClose(currentUser.role);
+      if (left !== null && left <= 15 && !closingWarnedRef.current) {
+        closingWarnedRef.current = true;
+        setClosingWarning(left);
+      }
       if (!isWithinWorkingHours(currentUser.role)) {
         logout().then(() => {
           setCurrentUser(null);
@@ -65,6 +73,7 @@ export default function App() {
   }, [currentUser]);
 
   const handleLogin = (user) => {
+    closingWarnedRef.current = false; // warn again on the next working day
     setCurrentUser(user);
     setCurrentView(defaultViewFor(user));
   };
@@ -127,35 +136,25 @@ export default function App() {
   const isFactory = currentUser.role === 'factory';
   const isBoss    = currentUser.role === 'boss';
 
-  // Boss role: read-only production oversight — routed before all other views
+  let screen;
   if (isBoss || currentView === 'oversight') {
-    return (
-      <FactoryOversightView
-        currentUser={currentUser}
-        onLogout={handleLogout}
-      />
-    );
-  }
-
-  // Admin-only daily money report
-  if (currentUser.role === 'admin' && currentView === 'report') {
-    return <DailyReportView onBack={goToHistory} onLogout={handleLogout} />;
-  }
-
-  // Factory role is directed exclusively to the Kitchen Display System (KDS) when feature is enabled
-  if (ENABLE_FACTORY_SYSTEM && (isFactory || currentView === 'factory')) {
-    return (
+    // Boss role: read-only production oversight — routed before all other views
+    screen = <FactoryOversightView currentUser={currentUser} onLogout={handleLogout} />;
+  } else if (currentUser.role === 'admin' && currentView === 'report') {
+    // Admin-only daily money report
+    screen = <DailyReportView onBack={goToHistory} onLogout={handleLogout} />;
+  } else if (ENABLE_FACTORY_SYSTEM && (isFactory || currentView === 'factory')) {
+    // Factory role is directed exclusively to the Kitchen Display System (KDS) when feature is enabled
+    screen = (
       <FactoryView
         currentUser={currentUser}
         onLogout={handleLogout}
         onSwitchToHistory={!isFactory ? goToHistory : null}
       />
     );
-  }
-
-  // Cashiers (and factory accounts when KDS is disabled) are directed to the Order History dashboard
-  if (isCashier || isFactory || currentView === 'history') {
-    return (
+  } else if (isCashier || isFactory || currentView === 'history') {
+    // Cashiers (and factory accounts when KDS is disabled) are directed to the Order History dashboard
+    screen = (
       <OrderHistoryView
         currentUser={currentUser}
         onLogout={handleLogout}
@@ -165,16 +164,31 @@ export default function App() {
         onReport={currentUser.role === 'admin' ? goToReport : null}
       />
     );
+  } else {
+    screen = (
+      <OrderFormView
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onHistory={goToHistory}
+        onFactory={goToFactory}
+        editingOrder={editingOrder}
+        onCancelEdit={goToNewOrder}
+      />
+    );
   }
 
   return (
-    <OrderFormView
-      currentUser={currentUser}
-      onLogout={handleLogout}
-      onHistory={goToHistory}
-      onFactory={goToFactory}
-      editingOrder={editingOrder}
-      onCancelEdit={goToNewOrder}
-    />
+    <>
+      {screen}
+      <Modal
+        isOpen={closingWarning !== null}
+        type="alert"
+        title="⏰ اقتراب نهاية ساعات العمل"
+        message={`سيتم تسجيل الخروج تلقائياً الساعة 10:00 مساءً (بعد ${closingWarning ?? ''} دقيقة).\nيرجى حفظ أي طلبية مفتوحة الآن حتى لا تضيع.`}
+        confirmText="حسناً"
+        onConfirm={() => setClosingWarning(null)}
+        onCancel={() => setClosingWarning(null)}
+      />
+    </>
   );
 }

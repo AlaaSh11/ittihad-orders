@@ -66,7 +66,23 @@ function Row3({ cols }) {
 
 // ── Compact header section ───────────────────────────────────────────────────
 
-function PrintHeader({ id, header, createdAt }) {
+// Receipt title by what the order contains.
+const TITLE_BY_TYPE = {
+  cake: 'طلبية قالب كايك',
+  chocolate: 'طلبية شوكولا',
+  occasion: 'طلبية مناسبة',
+  simple: 'طلبية',
+};
+function receiptTitle(order) {
+  const types = Array.isArray(order.items) && order.items.length > 0
+    ? [...new Set(order.items.map((i) => i.orderType))]
+    : [order.orderType];
+  return types.length === 1 ? (TITLE_BY_TYPE[types[0]] || 'طلبية') : 'طلبية';
+}
+
+function PrintHeader({ id, title, header, createdAt }) {
+  // Saved without internet: the real number is assigned when it syncs.
+  const isTemp = typeof id === 'string' && id.startsWith('TEMP-OFFLINE-');
   const displayDate = (() => {
     const d = createdAt ? new Date(createdAt) : new Date();
     const validDate = isNaN(d.getTime()) ? new Date() : d;
@@ -84,8 +100,14 @@ function PrintHeader({ id, header, createdAt }) {
         </div>
         {/* Title + order ID — center */}
         <div style={{ textAlign: 'center' }}>
-          <div className="pf-main-title">طلبية قالب كايك</div>
-          <div className="pf-order-id">{id}</div>
+          <div className="pf-main-title">{title}</div>
+          {isTemp ? (
+            <div className="pf-order-id" style={{ fontSize: '7pt' }}>
+              رقم مؤقت (بدون إنترنت): {id.slice(-5).toUpperCase()}
+            </div>
+          ) : (
+            <div className="pf-order-id">{id}</div>
+          )}
         </div>
         {/* Spacer right */}
         <div />
@@ -312,13 +334,13 @@ function PrintSimpleBody({ body }) {
 
 function PrintFooterShowroom({ footer }) {
   const depositLabel = footer?.depositPaid
-    ? `✓ عربون مطلوب — ${footer?.depositAmount || ''}`
+    ? `✓ عربون مطلوب — $${footer?.depositAmount || ''}`
     : '☐ عربون مطلوب';
 
   return (
     <div style={{ borderTop: '1px solid #ccc', paddingTop: '2mm', marginTop: '1mm' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', gap: '3mm', alignItems: 'flex-end' }}>
-        <PField label="السعر الإجمالي" value={footer?.price} dir="ltr" />
+        <PField label="السعر الإجمالي" value={footer?.price ? `$${footer.price}` : ''} dir="ltr" />
         {/* Deposit checkbox display */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', paddingBottom: '1mm' }}>
           <span className="pf-label" style={{ fontWeight: 'bold' }}>{depositLabel}</span>
@@ -329,7 +351,7 @@ function PrintFooterShowroom({ footer }) {
           )}
         </div>
         <div>
-          <PField label="المتبقي (عند التسليم لدى الكاشير)" value={footer?.remaining} dir="ltr" />
+          <PField label="المتبقي (عند التسليم لدى الكاشير)" value={footer?.remaining ? `$${footer.remaining}` : ''} dir="ltr" />
         </div>
       </div>
       {footer?.depositPaid && (
@@ -401,7 +423,7 @@ function PrintPage({ order, variant }) {
       </div>
 
       {/* Header */}
-      <PrintHeader id={id} header={header} createdAt={order?.createdAt} />
+      <PrintHeader id={id} title={receiptTitle(order)} header={header} createdAt={order?.createdAt} />
 
       {/* Divider */}
       <div style={{ borderTop: '0.5px solid #ccc', marginBottom: '1.5mm' }} />
@@ -412,7 +434,18 @@ function PrintPage({ order, variant }) {
           const ItemBody = PRINT_BODY_MAP[item.orderType] || PrintCakeBody;
           return (
             <div key={idx} style={{ marginBottom: '1.5mm', paddingBottom: '1.5mm', borderBottom: idx < items.length - 1 ? '1px dashed #ccc' : 'none' }}>
-              <div className="pf-section-title">صنف {idx + 1}: {ORDER_TYPE_LABELS[item.orderType]}</div>
+              <div className="pf-section-title">
+                صنف {idx + 1}: {ORDER_TYPE_LABELS[item.orderType]}
+                {/* Item price on the showroom copy only; the factory copy has no prices */}
+                {!isFactory && (item.priceUSD || item.priceLBP) && ' — '}
+                {!isFactory && (item.priceUSD || item.priceLBP) && (
+                  <span dir="ltr" style={{ fontWeight: 'normal' }}>
+                    {item.priceUSD ? `$${Number(item.priceUSD).toLocaleString('en-US')}` : ''}
+                    {item.priceUSD && item.priceLBP ? ' / ' : ''}
+                    {item.priceLBP ? `${Number(item.priceLBP).toLocaleString('en-US')} L.L` : ''}
+                  </span>
+                )}
+              </div>
               <ItemBody body={item.body} />
             </div>
           );
