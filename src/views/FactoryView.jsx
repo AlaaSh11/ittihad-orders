@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { listOrders, listOpenOrders, mergeOrders, updateProductionStatus } from '../lib/ordersStore';
+import { subscribeOperationalOrders, updateProductionStatus } from '../lib/ordersStore';
+import { useToday } from '../lib/useToday';
 import { CAKE_ADDONS } from '../constants/cakeOrderFields';
 import { compareDeliveryTimes } from '../constants/timeSlots';
 import { buildSameDayCustomerOrdersMap, getSameDayCustomerInfo } from '../lib/orderGrouping';
@@ -107,32 +108,28 @@ export default function FactoryView({ currentUser, onLogout, onSwitchToHistory }
 
   const staffName = currentUser?.arabicName || currentUser?.username || 'طاقم المصنع';
 
-  // Fetch orders from Firestore
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const [recent, open] = await Promise.all([listOrders(300), listOpenOrders()]);
-      const data = mergeOrders(recent, open);
-      const activeData = data.filter(o => !o.isCancelled);
-      setOrders(activeData);
-      const now = new Date();
-      setLastUpdated(now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
-    } catch (err) {
-      console.error('KDS Fetch error:', err);
-      setKdsError('تعذر تحديث شاشة المطبخ من السحابة. تحقق من الاتصال بالإنترنت.');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Live updates: Firestore pushes only the orders that change, instead of
+  // re-reading hundreds of orders on a timer (which exhausts the free daily quota).
+  const [subscription, setSubscription] = useState(0);
+  const today = useToday();
+  const fetchOrders = () => { setLoading(true); setSubscription((n) => n + 1); };
 
-  // Auto-refresh KDS every 45 seconds to catch new incoming orders immediately
   useEffect(() => {
-    fetchOrders();
-    const interval = setInterval(() => {
-      fetchOrders();
-    }, 45000);
-    return () => clearInterval(interval);
-  }, []);
+    return subscribeOperationalOrders(
+      { recentCount: 300 },
+      (data) => {
+        setOrders(data.filter(o => !o.isCancelled));
+        setLastUpdated(new Date().toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+        setKdsError('');
+        setLoading(false);
+      },
+      (err) => {
+        console.error('KDS live update error:', err);
+        setKdsError('تعذر تحديث شاشة المطبخ من السحابة. تحقق من الاتصال بالإنترنت.');
+        setLoading(false);
+      },
+    );
+  }, [subscription, today]);
 
   // Update production status handler
   const handleStageChange = async (order, newStatus) => {

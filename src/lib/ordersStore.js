@@ -13,6 +13,7 @@ import {
   writeBatch,
   serverTimestamp,
   collectionGroup,
+  onSnapshot,
 } from 'firebase/firestore';
 import { db, auth } from './firebase';
 import { uploadPhotoDataUrl } from './storageHelper';
@@ -36,9 +37,24 @@ function readLocalOrders() {
   }
 }
 
+// Photos saved inline (data: URLs) would fill the browser's ~5 MB storage
+// after a few dozen orders, silently stopping the backup and the offline
+// queue. The backup keeps everything except those inline photos (the queue
+// keeps them, so nothing is lost before it syncs).
+function withoutInlinePhotos(order) {
+  const strip = (body) => (body?.referencePhoto?.startsWith?.('data:')
+    ? { ...body, referencePhoto: null }
+    : body);
+  return {
+    ...order,
+    body: order.body ? strip(order.body) : order.body,
+    items: Array.isArray(order.items) ? order.items.map((it) => ({ ...it, body: strip(it.body) })) : order.items,
+  };
+}
+
 function writeLocalOrders(orders) {
   try {
-    const trimmed = orders.slice(-200);
+    const trimmed = orders.slice(-150).map(withoutInlinePhotos);
     localStorage.setItem(ORDERS_KEY, JSON.stringify(trimmed));
   } catch (e) {
     console.warn('LocalStorage quota limit reached for backup:', e);
@@ -54,13 +70,27 @@ function readOfflineQueue() {
   }
 }
 
+/** @returns {boolean} false if the queue could not be stored (device storage full). */
 function writeOfflineQueue(queue) {
   try {
     localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    return true;
   } catch (e) {
     console.warn('LocalStorage error writing offline queue:', e);
+    return false;
   }
 }
+
+/** Queue a change for later; throws if it cannot be kept, so the UI reports a failed save. */
+function enqueue(item) {
+  const queue = readOfflineQueue();
+  queue.push(item);
+  if (!writeOfflineQueue(queue)) {
+    throw new Error('لا يمكن حفظ الطلبية على هذا الجهاز بدون إنترنت (ذاكرة الجهاز ممتلئة).');
+  }
+}
+
+const queueKey = (item) => `${item.type}|${item.timestamp}|${item.id || item.order?.id}`;
 
 export function normalizeArabic(text) {
   if (!text) return '';
@@ -197,16 +227,33 @@ async function commitCreate(order, meta) {
 
 // ── Offline Queue Sync Engine ─────────────────────────────────────
 
-export async function syncOfflineQueue() {
+// Only one sync at a time: app start and the browser's "online" event can
+// fire together, and two parallel runs would send the same offline order
+// twice (as two orders with different numbers).
+let syncInFlight = null;
+
+export function syncOfflineQueue() {
+  if (!syncInFlight) {
+    syncInFlight = runOfflineSync().finally(() => { syncInFlight = null; });
+  }
+  return syncInFlight;
+}
+
+async function runOfflineSync() {
   const queue = readOfflineQueue();
   if (!queue || queue.length === 0) return;
 
   console.log(`[Offline Sync] Processing ${queue.length} pending offline operation(s)...`);
   const remainingQueue = [];
+  // Keys taken before processing: a synced order's temporary number is replaced below.
+  const processed = new Set(queue.map(queueKey));
 
   for (const item of queue) {
     try {
-      if (item.type === 'CREATE') {
+      if (item.type === 'CREATE' && item.created) {
+        // Order already saved on an earlier attempt; only its payments are left.
+        await syncPendingPayments(item);
+      } else if (item.type === 'CREATE') {
         let order = { ...item.order };
 
         // 1. Upload photo if still Base64
@@ -243,9 +290,9 @@ export async function syncOfflineQueue() {
         //    taken while it was still offline.
         const meta = { clientAt: item.clientAt || order.createdAt || new Date().toISOString() };
         await commitCreate(orderToStore, meta);
-        for (const p of item.pendingPayments || []) {
-          await commitUpdate(orderToStore.id, {}, { action: p.action, clientAt: p.clientAt, payments: [p.payment] });
-        }
+        // From here on a retry must not create the order again (it would get a new number).
+        item.order = orderToStore;
+        item.created = true;
 
         // 5. Update local storage: swap old TEMP-OFFLINE ID with new official ID
         const localOrders = readLocalOrders();
@@ -257,6 +304,7 @@ export async function syncOfflineQueue() {
         }
         writeLocalOrders(localOrders);
 
+        await syncPendingPayments(item);
         console.log(`[Offline Sync] Successfully synced order ${orderToStore.id} (was ${oldId})`);
       } else if (item.type === 'UPDATE') {
         await commitUpdate(item.id, { ...item.patch, syncedAt: new Date().toISOString() }, {
@@ -272,7 +320,18 @@ export async function syncOfflineQueue() {
     }
   }
 
-  writeOfflineQueue(remainingQueue);
+  // Keep anything queued while this sync was running.
+  const addedMeanwhile = readOfflineQueue().filter((i) => !processed.has(queueKey(i)));
+  writeOfflineQueue([...remainingQueue, ...addedMeanwhile]);
+}
+
+/** Payments taken on an order while it was still offline; removed one by one as they sync. */
+async function syncPendingPayments(item) {
+  while (item.pendingPayments?.length) {
+    const p = item.pendingPayments[0];
+    await commitUpdate(item.order.id, {}, { action: p.action, clientAt: p.clientAt, payments: [p.payment] });
+    item.pendingPayments.shift();
+  }
 }
 
 // ── Public API ────────────────────────────────────────────────────
@@ -338,9 +397,7 @@ export async function createOrder(order) {
     await commitCreate(saved, { clientAt: saved.savedAt });
   } catch (error) {
     console.warn('Enqueued order for offline sync:', saved.id, error?.message);
-    const queue = readOfflineQueue();
-    queue.push({ type: 'CREATE', order: saved, timestamp: Date.now(), clientAt: saved.savedAt });
-    writeOfflineQueue(queue);
+    enqueue({ type: 'CREATE', order: saved, timestamp: Date.now(), clientAt: saved.savedAt });
   }
 
   return saved;
@@ -377,7 +434,7 @@ export async function updateOrder(id, patch, { before, action = 'update', paymen
   // Order saved offline with a temporary ID.
   if (id.startsWith('TEMP-OFFLINE-')) {
     const queue = readOfflineQueue();
-    const pending = queue.find((q) => q.type === 'CREATE' && q.order?.id === id);
+    const pending = queue.find((q) => q.type === 'CREATE' && !q.created && q.order?.id === id);
     if (pending) {
       // Not synced yet: amend the queued creation instead of queueing an update
       // for a document that does not exist. Payments are written after it syncs.
@@ -385,7 +442,9 @@ export async function updateOrder(id, patch, { before, action = 'update', paymen
       if (payment) {
         pending.pendingPayments = [...(pending.pendingPayments || []), { action, payment, clientAt: updatedAt }];
       }
-      writeOfflineQueue(queue);
+      if (!writeOfflineQueue(queue)) {
+        throw new Error('لا يمكن حفظ التعديل على هذا الجهاز بدون إنترنت (ذاكرة الجهاز ممتلئة).');
+      }
       const localOrders = readLocalOrders();
       const i = localOrders.findIndex((o) => o.id === id);
       if (i !== -1) {
@@ -418,9 +477,7 @@ export async function updateOrder(id, patch, { before, action = 'update', paymen
     return updatedSnap.exists() ? normalizeOrder(updatedSnap.data()) : null;
   } catch (e) {
     console.warn('Update queued offline:', id, e?.message);
-    const queue = readOfflineQueue();
-    queue.push({ type: 'UPDATE', id, patch: { ...patch, updatedAt }, action, changes, payments, clientAt: updatedAt, timestamp: Date.now() });
-    writeOfflineQueue(queue);
+    enqueue({ type: 'UPDATE', id, patch: { ...patch, updatedAt }, action, changes, payments, clientAt: updatedAt, timestamp: Date.now() });
     return idx !== -1 ? normalizeOrder(localOrders[idx]) : null;
   }
 }
@@ -487,12 +544,20 @@ export async function markPaid(order, amounts, paidBy) {
 /** Undo "fully paid"; reverses the recorded final payment in /payments. */
 export async function undoPaid(order) {
   const prev = order.finalPayment;
-  return updateOrder(order.id, {
+  const patch = {
     isPaid: false,
     paidAt: null,
     paidBy: null,
     finalPayment: null,
-  }, {
+  };
+  // Paid in one go (no separate deposit was collected): "paid" also marked the
+  // deposit as collected, so undoing must reopen the deposit too — otherwise
+  // the order would show a deposit that was never received.
+  // (Only for payments recorded by this system: older orders have no finalPayment.)
+  if (prev && order.footer?.depositPaid && !order.depositPayment) {
+    Object.assign(patch, { depositCollected: false, depositCollectedAt: null, depositCollectedBy: null });
+  }
+  return updateOrder(order.id, patch, {
     before: order,
     action: 'undo_payment',
     payment: prev && (prev.usd || prev.lbp)
@@ -587,6 +652,35 @@ export async function listOpenOrders({ includeUnpaid = false, daysBack = 3 } = {
     return [];
   });
   return mergeOrders(...lists);
+}
+
+/**
+ * Live view of the orders the factory / oversight screens need: the newest
+ * `recentCount` orders plus every order due from `daysBack` days ago onwards.
+ * Firestore sends the full lists once, then only the orders that change,
+ * which keeps reads far below the free plan's daily quota (a 45-second
+ * re-read of 300 orders costs ~360k reads/day per open screen).
+ * @returns {() => void} unsubscribe
+ */
+export function subscribeOperationalOrders({ recentCount = 300, daysBack = 3 } = {}, onData, onError) {
+  let recent = null;
+  let upcoming = null;
+  const emit = () => {
+    if (recent && upcoming) onData(mergeOrders(recent, upcoming));
+  };
+  const toOrders = (snap) => snap.docs.map((d) => normalizeOrder(d.data()));
+
+  const stopRecent = onSnapshot(
+    query(collection(db, ORDERS_COLLECTION), orderBy('createdAt', 'desc'), limit(recentCount)),
+    (snap) => { recent = toOrders(snap); emit(); },
+    (err) => onError?.(err),
+  );
+  const stopUpcoming = onSnapshot(
+    query(collection(db, ORDERS_COLLECTION), where('header.deliveryDate', '>=', localDateString(-daysBack))),
+    (snap) => { upcoming = toOrders(snap); emit(); },
+    (err) => onError?.(err),
+  );
+  return () => { stopRecent(); stopUpcoming(); };
 }
 
 /**

@@ -306,30 +306,31 @@ export default function OrderFormView({ currentUser, onLogout, onHistory, onFact
         price: hasItemPrices ? String(autoTotalUSD) : footerData.price
       };
 
-      if (isEditMode) {
-        const patch = {
-          header: { ...headerData },
-          items: cartItems,
-          // Remove old schema fields to prevent confusion
-          orderType: null,
-          body: null,
-          footer: finalFooter,
-          isPaid: editingOrder.isPaid || false,
-          depositCollected: editingOrder.depositCollected || false,
-        };
-        const updated = await updateOrder(editingOrder.id, patch, { before: editingOrder, action: 'edit' });
-        const fullOrder = updated || { ...editingOrder, ...patch, updatedAt: new Date().toISOString() };
-        setSavedOrder(fullOrder);
-        setOrderId(editingOrder.id);
-        setIsSaved(true);
-      } else if (savedOrder) {
-        // Already saved in this session: update that order instead of
-        // creating a duplicate with a new number.
-        const patch = { header: { ...headerData }, items: cartItems, footer: finalFooter };
-        const updated = await updateOrder(savedOrder.id, patch, { before: savedOrder, action: 'edit' });
-        const fullOrder = updated || { ...savedOrder, ...patch, updatedAt: new Date().toISOString() };
+      if (isEditMode || savedOrder) {
+        // Editing an existing order, or saving again after the first save
+        // (never create a duplicate). Only the sections this screen actually
+        // changed are written, and never the payment fields, so a payment or
+        // price change made by the cashier meanwhile is not overwritten.
+        const base = savedOrder || editingOrder;
+        const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+        const patch = {};
+        if (!same(headerData, { ...makeEmptyHeader(currentUser), ...base.header })) {
+          patch.header = { ...headerData };
+        }
+        if (!Array.isArray(base.items) || !same(cartItems, base.items)) {
+          patch.items = cartItems;
+          // Remove old single-item schema fields to prevent confusion
+          if (base.orderType || base.body) { patch.orderType = null; patch.body = null; }
+        }
+        if (!same(finalFooter, { ...makeEmptyFooter(), ...base.footer })) {
+          patch.footer = finalFooter;
+        }
+        const updated = await updateOrder(base.id, patch, { before: base, action: 'edit' });
+        const fullOrder = updated || { ...base, ...patch, updatedAt: new Date().toISOString() };
         setSavedOrder(fullOrder);
         setOrderId(fullOrder.id);
+        // Show what is actually stored now (it may include the cashier's changes).
+        setFooterData({ ...makeEmptyFooter(), ...fullOrder.footer });
         setIsSaved(true);
       } else {
         const newId = await getNextOrderId();

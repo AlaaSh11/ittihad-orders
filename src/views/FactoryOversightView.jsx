@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { listOrders, listOpenOrders, mergeOrders } from "../lib/ordersStore";
+import { subscribeOperationalOrders } from "../lib/ordersStore";
+import { useToday } from "../lib/useToday";
 import { CAKE_ADDONS } from "../constants/cakeOrderFields";
 import { compareDeliveryTimes } from "../constants/timeSlots";
 
@@ -408,25 +409,25 @@ export default function FactoryOversightView({ currentUser, onLogout }) {
 
   const staffName = currentUser?.arabicName || "المراقب";
 
-  const fetchOrders = async () => {
-    setLoading(true);
-    try {
-      const [recent, open] = await Promise.all([listOrders(200), listOpenOrders()]);
-      const data = mergeOrders(recent, open);
-      setOrders(data);
-      setLastUpdated(new Date().toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }));
-    } catch (err) {
-      console.error("Oversight fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Live updates (see FactoryView): no timed re-reads of the whole list.
+  const [subscription, setSubscription] = useState(0);
+  const today = useToday();
+  const fetchOrders = () => { setLoading(true); setSubscription((n) => n + 1); };
 
   useEffect(() => {
-    fetchOrders();
-    const iv = setInterval(fetchOrders, 45000);
-    return () => clearInterval(iv);
-  }, []);
+    return subscribeOperationalOrders(
+      { recentCount: 200 },
+      (data) => {
+        setOrders(data);
+        setLastUpdated(new Date().toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" }));
+        setLoading(false);
+      },
+      (err) => {
+        console.error("Oversight live update error:", err);
+        setLoading(false);
+      },
+    );
+  }, [subscription, today]);
 
   // Filter active orders by selected delivery date (unless 'all' is selected)
   const dateFilteredOrders = useMemo(() => {
